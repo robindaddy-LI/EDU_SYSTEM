@@ -1,0 +1,183 @@
+// This is your Prisma schema file,
+// learn more about it in the docs: https://pris.ly/d/prisma-schema
+
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
+}
+
+// Enums
+enum UserRole {
+  admin
+  teacher
+  recorder
+}
+
+enum StudentType {
+  member
+  seeker
+}
+
+enum TeacherType {
+  formal
+  trainee
+}
+
+enum AttendanceStatus {
+  present
+  absent
+  late
+  excused
+}
+
+enum UserStatus {
+  active
+  inactive
+}
+
+// Models
+
+model User {
+  id           Int        @id @default(autoincrement())
+  username     String     @unique
+  passwordHash String     @map("password_hash")
+  fullName     String     @map("full_name")
+  role         UserRole
+  classId      Int?       @map("class_id") // Optional link to a class
+  email        String?
+  status       UserStatus @default(active)
+  createdAt    DateTime   @default(now()) @map("created_at")
+  updatedAt    DateTime   @updatedAt @map("updated_at")
+
+  class        Class?     @relation(fields: [classId], references: [id])
+
+  @@map("users")
+}
+
+model Class {
+  id        Int      @id @default(autoincrement())
+  name      String
+  createdAt DateTime @default(now()) @map("created_at")
+  updatedAt DateTime @updatedAt @map("updated_at")
+
+  users                   User[]
+  students                Student[]
+  classSessions           ClassSession[]
+  teacherClassAssignments TeacherClassAssignment[]
+
+  @@map("classes")
+}
+
+model Student {
+  id                Int         @id @default(autoincrement())
+  fullName          String      @map("full_name")
+  studentType       StudentType @map("student_type")
+  status            String      // active, inactive
+  classId           Int         @map("class_id")
+  dob               DateTime?
+  address           String?
+  contactName       String?     @map("contact_name")
+  contactPhone      String?     @map("contact_phone")
+  isBaptized        Boolean     @default(false) @map("is_baptized")
+  baptismDate       DateTime?   @map("baptism_date")
+  isSpiritBaptized  Boolean     @default(false) @map("is_spirit_baptized")
+  spiritBaptismDate DateTime?   @map("spirit_baptism_date")
+  notes             String?
+  
+  enrollmentHistory Json?       @map("enrollment_history") // Simplified JSON storage for history
+  historicalAttendance Json?    @map("historical_attendance") // Simplified JSON storage for old stats
+
+  createdAt         DateTime    @default(now()) @map("created_at")
+  updatedAt         DateTime    @updatedAt @map("updated_at")
+
+  class             Class               @relation(fields: [classId], references: [id])
+  attendanceRecords StudentAttendance[]
+
+  @@map("students")
+}
+
+model Teacher {
+  id          Int         @id @default(autoincrement())
+  fullName    String      @map("full_name")
+  teacherType TeacherType @map("teacher_type")
+  status      String      // active, inactive
+  phone       String?
+  email       String?
+  notes       String?
+  createdAt   DateTime    @default(now()) @map("created_at")
+  updatedAt   DateTime    @updatedAt @map("updated_at")
+
+  classAssignments TeacherClassAssignment[]
+  attendanceRecords TeacherAttendance[]
+
+  @@map("teachers")
+}
+
+model TeacherClassAssignment {
+  id           Int     @id @default(autoincrement())
+  academicYear String  @map("academic_year")
+  teacherId    Int     @map("teacher_id")
+  classId      Int     @map("class_id")
+  isLead       Boolean @default(false) @map("is_lead")
+
+  teacher Teacher @relation(fields: [teacherId], references: [id])
+  class   Class   @relation(fields: [classId], references: [id])
+
+  @@map("teacher_class_assignments")
+}
+
+model ClassSession {
+  id                  Int      @id @default(autoincrement())
+  classId             Int      @map("class_id")
+  date                DateTime
+  sessionType         String   @map("session_type") // '安息日學'
+  worshipTopic        String?  @map("worship_topic")
+  worshipTeacherName  String?  @map("worship_teacher_name")
+  activityTopic       String?  @map("activity_topic")
+  activityTeacherName String?  @map("activity_teacher_name")
+  auditorCount        Int      @default(0) @map("auditor_count")
+  offeringAmount      Decimal  @default(0.0) @map("offering_amount") @db.Decimal(10, 2)
+  notes               String?
+  isCancelled         Boolean  @default(false) @map("is_cancelled")
+  cancellationReason  String?  @map("cancellation_reason")
+  createdAt           DateTime @default(now()) @map("created_at")
+  updatedAt           DateTime @updatedAt @map("updated_at")
+
+  class             Class               @relation(fields: [classId], references: [id])
+  studentAttendance StudentAttendance[]
+  teacherAttendance TeacherAttendance[]
+
+  @@map("class_sessions")
+}
+
+model StudentAttendance {
+  id        Int              @id @default(autoincrement())
+  sessionId Int              @map("session_id")
+  studentId Int              @map("student_id")
+  status    AttendanceStatus
+  reason    String?
+  
+  session ClassSession @relation(fields: [sessionId], references: [id])
+  student Student      @relation(fields: [studentId], references: [id])
+
+  @@unique([sessionId, studentId])
+  @@map("student_attendance")
+}
+
+model TeacherAttendance {
+  id        Int              @id @default(autoincrement())
+  sessionId Int              @map("session_id")
+  teacherId Int              @map("teacher_id")
+  status    AttendanceStatus
+  reason    String?
+
+  session ClassSession @relation(fields: [sessionId], references: [id])
+  teacher Teacher      @relation(fields: [teacherId], references: [id])
+
+  @@unique([sessionId, teacherId])
+  @@map("teacher_attendance")
+}
