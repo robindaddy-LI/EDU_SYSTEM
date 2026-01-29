@@ -53,7 +53,88 @@ export const ClassSessionController = {
                 return res.status(404).json({ error: 'Session not found' });
             }
 
-            // Format response to match frontend expectations nicely
+            // Calculate academic year for this session
+            const sessionDate = new Date(session.date);
+            const academicYear = sessionDate.getMonth() >= 8
+                ? sessionDate.getFullYear()
+                : sessionDate.getFullYear() - 1;
+
+            // 1. Fetch all active students currently in this class
+            // Note: Ideally we should check if they were in the class at session.date, 
+            // but for now we use current status or if they have an attendance record.
+            const allStudents = await prisma.student.findMany({
+                where: {
+                    classId: session.classId,
+                    status: 'active'
+                }
+            });
+
+            // 2. Fetch all teachers assigned to this class for the session's academic year
+            const assignedTeachers = await prisma.teacherClassAssignment.findMany({
+                where: {
+                    classId: session.classId,
+                    academicYear: String(academicYear)
+                },
+                include: { teacher: true }
+            });
+
+            // 3. Merge Student Attendance
+            // Map existing records by studentId
+            const studentAttendanceMap = new Map(session.studentAttendance.map(r => [r.studentId, r]));
+
+            // Create a comprehensive list: All active students + anyone else who has a record (even if inactive/transferred)
+            const studentList = [...allStudents];
+
+            // Add students who have records but aren't in the active list (e.g. inactive now but attended then)
+            session.studentAttendance.forEach(r => {
+                if (!studentList.find(s => s.id === r.studentId)) {
+                    studentList.push(r.student);
+                }
+            });
+
+            const mergedStudentAttendance = studentList.map(student => {
+                const record = studentAttendanceMap.get(student.id);
+                return {
+                    id: record ? record.id : 0, // 0 indicates no DB record yet
+                    student: student,
+                    status: record ? record.status : AttendanceStatus.present, // Default to present if no record
+                    reason: record ? record.reason : undefined
+                };
+            });
+
+            // 4. Merge Teacher Attendance
+            const teacherAttendanceMap = new Map(session.teacherAttendance.map(r => [r.teacherId, r]));
+
+            // Get list of assigned teachers (filter out inactive if needed, though assignment usually implies active)
+            let teacherList = assignedTeachers.map(a => a.teacher).filter(t => t.status === 'active');
+
+            // FALLBACK: If teacherList is empty (e.g. assignments missing for this academic year),
+            // fetch ALL active teachers so the UI isn't empty.
+            if (teacherList.length === 0) {
+                const allActiveTeachers = await prisma.teacher.findMany({
+                    where: { status: 'active' }
+                });
+                teacherList = allActiveTeachers;
+            }
+
+            // Add teachers with existing records who might not be assigned anymore
+            session.teacherAttendance.forEach(r => {
+                if (!teacherList.find(t => t.id === r.teacherId)) {
+                    teacherList.push(r.teacher);
+                }
+            });
+
+            const mergedTeacherAttendance = teacherList.map(teacher => {
+                const record = teacherAttendanceMap.get(teacher.id);
+                return {
+                    id: record ? record.id : 0,
+                    teacher: teacher,
+                    status: record ? record.status : AttendanceStatus.present,
+                    reason: record ? record.reason : undefined
+                };
+            });
+
+            // Format response
             const response = {
                 session: {
                     id: session.id,
@@ -70,18 +151,8 @@ export const ClassSessionController = {
                     isCancelled: session.isCancelled,
                     cancellationReason: session.cancellationReason,
                 },
-                attendingTeachers: session.teacherAttendance.map((r: any) => ({
-                    id: r.id, // record id
-                    teacher: r.teacher,
-                    status: r.status,
-                    reason: r.reason
-                })),
-                studentAttendance: session.studentAttendance.map((r: any) => ({
-                    id: r.id, // record id
-                    student: r.student,
-                    status: r.status,
-                    reason: r.reason
-                }))
+                attendingTeachers: mergedTeacherAttendance,
+                studentAttendance: mergedStudentAttendance
             };
 
             res.json(response);

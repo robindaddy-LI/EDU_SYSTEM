@@ -53,9 +53,24 @@ model User {
   createdAt    DateTime   @default(now()) @map("created_at")
   updatedAt    DateTime   @updatedAt @map("updated_at")
 
-  class        Class?     @relation(fields: [classId], references: [id])
+  class         Class?          @relation(fields: [classId], references: [id])
+  operationLogs OperationLog[]
 
   @@map("users")
+}
+
+model OperationLog {
+  id          Int      @id @default(autoincrement())
+  timestamp   DateTime @default(now())
+  type        String   // '學年升班', '資料匯入', '教員設定'
+  description String
+  userId      Int?     @map("user_id")
+  metadata    Json?    // Additional context
+  createdAt   DateTime @default(now()) @map("created_at")
+
+  user User? @relation(fields: [userId], references: [id])
+
+  @@map("operation_logs")
 }
 
 model Class {

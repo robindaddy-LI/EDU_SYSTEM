@@ -34,7 +34,7 @@ export interface User {
 
 export interface Teacher {
     id: number;
-    fullName:string;
+    fullName: string;
     teacherType: TeacherType;
     status: 'active' | 'inactive';
     phoneNumber?: string;
@@ -56,7 +56,7 @@ export interface StudentAttendanceRecord {
     reason?: string; // New field for absence reason
     sessionId: number;
     studentId: number;
-    sessionDate: string; 
+    sessionDate: string;
     sessionType: string; // e.g., 'Sabbath School', 'Weekday Service'
 }
 
@@ -85,6 +85,7 @@ export interface Student {
     enrollmentHistory?: EnrollmentHistory[];
     attendanceRecords?: StudentAttendanceRecord[];
     historicalAttendance?: HistoricalAttendance[]; // Added field
+    class?: { id: number; name: string }; // Raw relation from API
 }
 
 export interface Class {

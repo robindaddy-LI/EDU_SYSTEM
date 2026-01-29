@@ -1,13 +1,16 @@
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import QuarterlyReport from './QuarterlyReport';
-import { mockStudents, mockTeachers, mockClasses } from '../data/mockData';
-import { Student, Teacher, StudentType, TeacherType } from '../types';
+import { studentService, teacherService, statisticsService, classService } from '../services';
+import { Student, Teacher, StudentType, TeacherType, Class } from '../types';
+import { SchoolStatistics } from '../services/statisticsService';
 
 const Reports: React.FC = () => {
-    const [activeTab, setActiveTab] = useState('quarterly');
+    const [activeTab, setActiveTab] = useState('overview');
 
     const renderActiveTab = () => {
         switch (activeTab) {
+            case 'overview':
+                return <SchoolOverview />;
             case 'quarterly':
                 return <QuarterlyReport />;
             case 'studentList':
@@ -21,9 +24,14 @@ const Reports: React.FC = () => {
 
     return (
         <div className="p-8">
-            <h1 className="text-3xl font-bold text-gray-800 mb-6">報表統計</h1>
+            <h1 className="text-3xl font-bold text-gray-800 mb-6">報表統計與儀表板</h1>
             <div className="mb-6 border-b border-gray-200">
-                <nav className="-mb-px flex space-x-6" aria-label="Tabs">
+                <nav className="-mb-px flex space-x-6 overflow-x-auto" aria-label="Tabs">
+                    <TabButton
+                        label="全校概況"
+                        isActive={activeTab === 'overview'}
+                        onClick={() => setActiveTab('overview')}
+                    />
                     <TabButton
                         label="季度統計報表"
                         isActive={activeTab === 'quarterly'}
@@ -67,28 +75,110 @@ const TabButton: React.FC<TabButtonProps> = ({ label, isActive, onClick }) => {
     );
 };
 
-// --- Sub-components for other reports ---
+// --- School Overview Dashboard ---
+const SchoolOverview: React.FC = () => {
+    const [stats, setStats] = useState<SchoolStatistics | null>(null);
+    const [isLoading, setIsLoading] = useState(false);
+
+    useEffect(() => {
+        const fetchStats = async () => {
+            setIsLoading(true);
+            try {
+                const data = await statisticsService.getSchoolStats();
+                setStats(data);
+            } catch (error) {
+                console.error("Failed to load school stats", error);
+            } finally {
+                setIsLoading(false);
+            }
+        };
+        fetchStats();
+    }, []);
+
+    if (isLoading) return <div className="p-8 text-center text-gray-500">載入中...</div>;
+    if (!stats) return <div className="p-8 text-center text-gray-500">無法載入數據</div>;
+
+    const maxStudents = Math.max(...stats.classBreakdown.map(c => c.studentCount), 1);
+
+    return (
+        <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-6 mb-8">
+            <StatCard title="目前學年度" value={stats.currentYear.toString()} icon="📅" color="bg-blue-100 text-blue-800" />
+            <StatCard title="在籍學員" value={stats.activeStudents.toString()} icon="👶" color="bg-green-100 text-green-800" />
+            <StatCard title="在職教員" value={stats.activeTeachers.toString()} icon="👩‍🏫" color="bg-purple-100 text-purple-800" />
+            <StatCard title="本年度聚會數" value={stats.sessionsThisYear.toString()} icon="📚" color="bg-yellow-100 text-yellow-800" />
+
+            <div className="col-span-1 md:col-span-2 lg:col-span-4 bg-white rounded-xl shadow-sm border border-gray-100 p-6">
+                <h3 className="text-lg font-bold text-gray-800 mb-4">班級人數分佈</h3>
+                <div className="space-y-4">
+                    {stats.classBreakdown.map(cls => (
+                        <div key={cls.id}>
+                            <div className="flex justify-between text-sm text-gray-600 mb-1">
+                                <span>{cls.name}</span>
+                                <span className="font-bold">{cls.studentCount} 人</span>
+                            </div>
+                            <div className="w-full bg-gray-100 rounded-full h-2.5">
+                                <div
+                                    className="bg-cute-primary h-2.5 rounded-full transition-all duration-500"
+                                    style={{ width: `${(cls.studentCount / maxStudents) * 100}%` }}
+                                ></div>
+                            </div>
+                        </div>
+                    ))}
+                </div>
+            </div>
+        </div>
+    );
+};
+
+const StatCard: React.FC<{ title: string; value: string; icon: string; color: string }> = ({ title, value, icon, color }) => (
+    <div className="bg-white rounded-xl shadow-sm border border-gray-100 p-6 flex items-center space-x-4">
+        <div className={`p-3 rounded-full ${color} text-xl`}>{icon}</div>
+        <div>
+            <p className="text-sm text-gray-500 font-medium">{title}</p>
+            <p className="text-2xl font-bold text-gray-800">{value}</p>
+        </div>
+    </div>
+);
+
 
 const StudentListReport: React.FC = () => {
-    const [statusFilter, setStatusFilter] = useState('active');
-    const classesMap = new Map(mockClasses.map(c => [c.id, c.className]));
+    const [statusFilter, setStatusFilter] = useState<'active' | 'inactive' | 'all'>('active');
+    const [students, setStudents] = useState<Student[]>([]);
+    const [classes, setClasses] = useState<Class[]>([]);
+    const [isLoading, setIsLoading] = useState(false);
 
-    const getStudentTypeName = (type: StudentType) => {
-        return type === StudentType.Member ? '信徒' : '慕道';
-    };
+    useEffect(() => {
+        const loadData = async () => {
+            setIsLoading(true);
+            try {
+                const [allStudents, allClasses] = await Promise.all([
+                    studentService.getAll(), // Fetch all to allow client filtering or update service to filter
+                    classService.getAll()
+                ]);
+                // Client-side mapping for classes
+                setClasses(allClasses);
+                setStudents(allStudents);
+            } catch (error) {
+                console.error("Failed to load students", error);
+            } finally {
+                setIsLoading(false);
+            }
+        };
+        loadData();
+    }, []);
 
-    const getStatusName = (status: 'active' | 'inactive') => {
-        return status === 'active' ? '在學' : '離校';
-    };
+    const studentsToDisplay = students.filter(s => statusFilter === 'all' || s.status === statusFilter);
+    const classesMap = new Map(classes.map(c => [c.id, c.className])); // Backend className mapped in service
 
-    const studentsToDisplay = mockStudents.filter(s => statusFilter === 'all' || s.status === statusFilter);
+    const getStudentTypeName = (type: StudentType) => (type === StudentType.Member ? '信徒' : '慕道');
+    const getStatusName = (status: string) => (status === 'active' ? '在學' : '離校');
 
     const handleExport = () => {
         const headers = ['姓名', '類別', '班級', '狀態', '出生日期', '地址', '緊急聯絡人姓名', '緊急聯絡人電話'];
         const data = studentsToDisplay.map(s => [
             s.fullName,
             getStudentTypeName(s.studentType),
-            classesMap.get(s.classId) || '未分班',
+            s.class?.name || (s.classId ? (classesMap.get(s.classId) || '未分班') : '未分班'), // Support raw relation or ID map
             getStatusName(s.status),
             s.dob || '',
             s.address || '',
@@ -98,26 +188,18 @@ const StudentListReport: React.FC = () => {
         exportToCsv('學員名冊.csv', headers, data);
     };
 
+    if (isLoading) return <div>載入中...</div>;
+
     return (
         <div>
             <div className="flex flex-wrap justify-between items-center mb-4 gap-4">
                 <div className="flex items-center space-x-4 bg-gray-100 p-2 rounded-lg">
                     <label className="text-sm font-medium text-gray-700">狀態:</label>
-                    <div className="flex items-center">
-                        <input type="radio" id="studentStatusActive" name="studentStatus" value="active" checked={statusFilter === 'active'} onChange={e => setStatusFilter(e.target.value)} className="h-4 w-4 text-church-blue-600 focus:ring-church-blue-500 border-gray-300"/>
-                        <label htmlFor="studentStatusActive" className="ml-2 block text-sm text-gray-900">在學</label>
-                    </div>
-                    <div className="flex items-center">
-                        <input type="radio" id="studentStatusInactive" name="studentStatus" value="inactive" checked={statusFilter === 'inactive'} onChange={e => setStatusFilter(e.target.value)} className="h-4 w-4 text-church-blue-600 focus:ring-church-blue-500 border-gray-300"/>
-                        <label htmlFor="studentStatusInactive" className="ml-2 block text-sm text-gray-900">離校</label>
-                    </div>
-                    <div className="flex items-center">
-                        <input type="radio" id="studentStatusAll" name="studentStatus" value="all" checked={statusFilter === 'all'} onChange={e => setStatusFilter(e.target.value)} className="h-4 w-4 text-church-blue-600 focus:ring-church-blue-500 border-gray-300"/>
-                        <label htmlFor="studentStatusAll" className="ml-2 block text-sm text-gray-900">全部</label>
-                    </div>
+                    <FilterRadio id="studentStatusActive" value="active" label="在學" current={statusFilter} onChange={setStatusFilter} />
+                    <FilterRadio id="studentStatusInactive" value="inactive" label="離校" current={statusFilter} onChange={setStatusFilter} />
+                    <FilterRadio id="studentStatusAll" value="all" label="全部" current={statusFilter} onChange={setStatusFilter} />
                 </div>
                 <button onClick={handleExport} className="bg-green-600 text-white px-4 py-2 rounded-lg hover:bg-green-700 transition-colors duration-200 flex items-center">
-                    <svg xmlns="http://www.w3.org/2000/svg" className="h-5 w-5 mr-2" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M4 16v1a3 3 0 003 3h10a3 3 0 003-3v-1m-4-4l-4 4m0 0l-4-4m4 4V4" /></svg>
                     匯出為 CSV
                 </button>
             </div>
@@ -137,7 +219,7 @@ const StudentListReport: React.FC = () => {
                             <tr key={student.id}>
                                 <td className="px-6 py-4 whitespace-nowrap">{student.fullName}</td>
                                 <td className="px-6 py-4 whitespace-nowrap">{getStudentTypeName(student.studentType)}</td>
-                                <td className="px-6 py-4 whitespace-nowrap">{classesMap.get(student.classId) || '未分班'}</td>
+                                <td className="px-6 py-4 whitespace-nowrap">{student.class?.name || classesMap.get(student.classId) || '未分班'}</td>
                                 <td className="px-6 py-4 whitespace-nowrap">
                                     <span className={`px-2 inline-flex text-xs leading-5 font-semibold rounded-full ${student.status === 'active' ? 'bg-green-100 text-green-800' : 'bg-gray-100 text-gray-800'}`}>
                                         {getStatusName(student.status)}
@@ -154,17 +236,29 @@ const StudentListReport: React.FC = () => {
 };
 
 const TeacherListReport: React.FC = () => {
-    const [statusFilter, setStatusFilter] = useState('active');
+    const [statusFilter, setStatusFilter] = useState<'active' | 'inactive' | 'all'>('active');
+    const [teachers, setTeachers] = useState<Teacher[]>([]);
+    const [isLoading, setIsLoading] = useState(false);
 
-    const getTeacherTypeName = (type: TeacherType) => {
-        return type === TeacherType.Formal ? '正式教員' : '見習教員';
-    };
-    
-    const getStatusName = (status: 'active' | 'inactive') => {
-        return status === 'active' ? '在職' : '離職';
-    };
+    useEffect(() => {
+        const loadTeachers = async () => {
+            setIsLoading(true);
+            try {
+                const data = await teacherService.getAll();
+                setTeachers(data);
+            } catch (error) {
+                console.error("Failed to load teachers", error);
+            } finally {
+                setIsLoading(false);
+            }
+        };
+        loadTeachers();
+    }, []);
 
-    const teachersToDisplay = mockTeachers.filter(t => statusFilter === 'all' || t.status === statusFilter);
+    const teachersToDisplay = teachers.filter(t => statusFilter === 'all' || t.status === statusFilter);
+
+    const getTeacherTypeName = (type: TeacherType) => (type === TeacherType.Formal ? '正式教員' : '見習教員');
+    const getStatusName = (status: string) => (status === 'active' ? '在職' : '離職');
 
     const handleExport = () => {
         const headers = ['姓名', '教員類別', '狀態', '電話', '電子郵件'];
@@ -178,26 +272,18 @@ const TeacherListReport: React.FC = () => {
         exportToCsv('教員名冊.csv', headers, data);
     };
 
+    if (isLoading) return <div>載入中...</div>;
+
     return (
         <div>
             <div className="flex flex-wrap justify-between items-center mb-4 gap-4">
-                 <div className="flex items-center space-x-4 bg-gray-100 p-2 rounded-lg">
+                <div className="flex items-center space-x-4 bg-gray-100 p-2 rounded-lg">
                     <label className="text-sm font-medium text-gray-700">狀態:</label>
-                    <div className="flex items-center">
-                        <input type="radio" id="teacherStatusActive" name="teacherStatus" value="active" checked={statusFilter === 'active'} onChange={e => setStatusFilter(e.target.value)} className="h-4 w-4 text-church-blue-600 focus:ring-church-blue-500 border-gray-300"/>
-                        <label htmlFor="teacherStatusActive" className="ml-2 block text-sm text-gray-900">在職</label>
-                    </div>
-                    <div className="flex items-center">
-                        <input type="radio" id="teacherStatusInactive" name="teacherStatus" value="inactive" checked={statusFilter === 'inactive'} onChange={e => setStatusFilter(e.target.value)} className="h-4 w-4 text-church-blue-600 focus:ring-church-blue-500 border-gray-300"/>
-                        <label htmlFor="teacherStatusInactive" className="ml-2 block text-sm text-gray-900">離職</label>
-                    </div>
-                    <div className="flex items-center">
-                        <input type="radio" id="teacherStatusAll" name="teacherStatus" value="all" checked={statusFilter === 'all'} onChange={e => setStatusFilter(e.target.value)} className="h-4 w-4 text-church-blue-600 focus:ring-church-blue-500 border-gray-300"/>
-                        <label htmlFor="teacherStatusAll" className="ml-2 block text-sm text-gray-900">全部</label>
-                    </div>
+                    <FilterRadio id="teacherStatusActive" value="active" label="在職" current={statusFilter} onChange={setStatusFilter} />
+                    <FilterRadio id="teacherStatusInactive" value="inactive" label="離職" current={statusFilter} onChange={setStatusFilter} />
+                    <FilterRadio id="teacherStatusAll" value="all" label="全部" current={statusFilter} onChange={setStatusFilter} />
                 </div>
                 <button onClick={handleExport} className="bg-green-600 text-white px-4 py-2 rounded-lg hover:bg-green-700 transition-colors duration-200 flex items-center">
-                    <svg xmlns="http://www.w3.org/2000/svg" className="h-5 w-5 mr-2" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M4 16v1a3 3 0 003 3h10a3 3 0 003-3v-1m-4-4l-4 4m0 0l-4-4m4 4V4" /></svg>
                     匯出為 CSV
                 </button>
             </div>
@@ -232,6 +318,20 @@ const TeacherListReport: React.FC = () => {
         </div>
     );
 };
+
+const FilterRadio: React.FC<{ id: string, value: string, label: string, current: string, onChange: (val: any) => void }> = ({ id, value, label, current, onChange }) => (
+    <div className="flex items-center">
+        <input
+            type="radio"
+            id={id}
+            value={value}
+            checked={current === value}
+            onChange={e => onChange(e.target.value)}
+            className="h-4 w-4 text-church-blue-600 focus:ring-church-blue-500 border-gray-300"
+        />
+        <label htmlFor={id} className="ml-2 block text-sm text-gray-900">{label}</label>
+    </div>
+);
 
 // --- CSV Export Utility ---
 const exportToCsv = (filename: string, headers: string[], data: (string | number)[][]) => {

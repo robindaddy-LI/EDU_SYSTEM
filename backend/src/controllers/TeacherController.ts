@@ -5,7 +5,7 @@ export const TeacherController = {
     // Get all teachers with optional filtering
     async getAllTeachers(req: Request, res: Response) {
         try {
-            const { status, search } = req.query;
+            const { status, search, academicYear } = req.query;
 
             const where: any = {};
             if (status) where.status = status as string;
@@ -13,8 +13,35 @@ export const TeacherController = {
                 where.fullName = { contains: search as string, mode: 'insensitive' };
             }
 
+
+            // Calculate current academic year (Taiwan school year: Sep 1 - Aug 31)
+            let currentYear: string;
+            if (academicYear) {
+                currentYear = academicYear as string;
+            } else {
+                const now = new Date();
+                const year = now.getFullYear();
+                const month = now.getMonth(); // 0-indexed (0 = Jan, 8 = Sep)
+                // If before September, use previous year as academic year
+                currentYear = (month < 8 ? year - 1 : year).toString();
+            }
+
             const teachers = await prisma.teacher.findMany({
                 where,
+                include: {
+                    classAssignments: {
+                        where: { academicYear: currentYear },
+                        include: {
+                            class: {
+                                select: {
+                                    id: true,
+                                    name: true
+                                }
+                            }
+                        },
+                        orderBy: { isLead: 'desc' }
+                    }
+                },
                 orderBy: { fullName: 'asc' }
             });
             res.json(teachers);

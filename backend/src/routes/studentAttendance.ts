@@ -1,0 +1,21 @@
+import express from 'express';
+import { StudentAttendanceController } from '../controllers/StudentAttendanceController';
+
+const router = express.Router();
+
+// Get all student attendance records (with optional filters)
+router.get('/', StudentAttendanceController.getAll);
+
+// Get single student attendance record by ID
+router.get('/:id', StudentAttendanceController.getById);
+
+// Create or update student attendance record
+router.post('/', StudentAttendanceController.upsert);
+
+// Batch upsert student attendance records
+router.post('/batch', StudentAttendanceController.batchUpsert);
+
+// Delete student attendance record
+router.delete('/:id', StudentAttendanceController.delete);
+
+export default router;

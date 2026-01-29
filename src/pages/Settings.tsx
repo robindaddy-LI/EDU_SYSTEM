@@ -1,8 +1,11 @@
 
 import React, { useState, useEffect, useMemo, useRef } from 'react';
 import { mockStudents, mockClasses, mockOperationLogs, mockTeachers, mockTeacherClassMap } from '../data/mockData';
-import { TeacherType, Teacher, Student, StudentType, EnrollmentHistory, HistoricalAttendance } from '../types';
+import { TeacherType, Teacher, Student, StudentType, EnrollmentHistory, HistoricalAttendance, Class } from '../types';
 import studentService from '../services/studentService';
+import teacherAssignmentService from '../services/teacherAssignmentService';
+import classService from '../services/classService';
+import operationLogService from '../services/operationLogService';
 // Import XLSX from CDN
 import * as XLSX from 'https://cdn.sheetjs.com/xlsx-0.20.3/package/xlsx.mjs';
 
@@ -128,6 +131,9 @@ const Settings: React.FC = () => {
     const [promotionResult, setPromotionResult] = useState<{ updated: number; skipped: number } | null>(null);
     const [isPromoting, setIsPromoting] = useState(false);
 
+    // Classes State
+    const [classes, setClasses] = useState<Class[]>(mockClasses);
+
     // State for teacher assignments
     const currentGregorianYear = getCurrentAcademicYear();
     const [selectedYear, setSelectedYear] = useState<string>(currentGregorianYear.toString());
@@ -140,29 +146,72 @@ const Settings: React.FC = () => {
     const [importResult, setImportResult] = useState<string | null>(null);
     const fileInputRef = useRef<HTMLInputElement>(null);
 
+    // State for Data Cleanup
+    const [duplicateGroups, setDuplicateGroups] = useState<Student[][]>([]);
+    const [isScanning, setIsScanning] = useState(false);
+    const [isAutoMerging, setIsAutoMerging] = useState(false);
+    const [cleanupResult, setCleanupResult] = useState<string | null>(null);
+
     const activeTeachers = useMemo(() => mockTeachers.filter(t => t.status === 'active'), []);
     const formalActiveTeachers = useMemo(() => activeTeachers.filter(t => t.teacherType === TeacherType.Formal), [activeTeachers]);
 
-    useEffect(() => {
-        const newAssignments: ClassAssignmentState = {};
-        mockClasses.forEach(cls => {
-            const classMap = mockTeacherClassMap.filter(m => m.classId === cls.id && m.academicYear === selectedYear);
-            const lead = classMap.find(m => m.isLead);
-            const others = classMap.filter(m => !m.isLead).map(m => m.teacherId);
 
-            newAssignments[cls.id] = {
-                leadTeacherId: lead ? String(lead.teacherId) : '',
-                teacherIds: others,
-            };
-        });
-        setAssignments(newAssignments);
-        setAssignmentSaveResult(null);
+
+    // Load Classes
+    useEffect(() => {
+        const loadClasses = async () => {
+            try {
+                const data = await classService.getAll();
+                // Ensure we have classes, if empty (fresh DB), keeping mockClasses might be safer for UI or handle empty
+                if (data && data.length > 0) {
+                    setClasses(data);
+                }
+            } catch (error) {
+                console.error('Failed to load classes', error);
+            }
+        };
+        loadClasses();
+    }, []);
+
+    useEffect(() => {
+        const loadAssignments = async () => {
+            try {
+                const apiAssignments = await teacherAssignmentService.getAll(selectedYear);
+                const newAssignments: ClassAssignmentState = {};
+
+
+
+                classes.forEach(cls => {
+                    const classAssignments = apiAssignments.filter(a => a.classId === cls.id);
+                    const lead = classAssignments.find(a => a.isLead);
+                    const others = classAssignments.filter(a => !a.isLead).map(a => a.teacherId);
+
+                    newAssignments[cls.id] = {
+                        leadTeacherId: lead ? String(lead.teacherId) : '',
+                        teacherIds: others,
+                    };
+                });
+
+                setAssignments(newAssignments);
+            } catch (error) {
+                console.error('Failed to load teacher assignments:', error);
+                // Fallback to empty assignments
+                const emptyAssignments: ClassAssignmentState = {};
+                classes.forEach(cls => {
+                    emptyAssignments[cls.id] = { leadTeacherId: '', teacherIds: [] };
+                });
+                setAssignments(emptyAssignments);
+            }
+            setAssignmentSaveResult(null);
+        };
+
+        loadAssignments();
     }, [selectedYear]);
 
 
-    const getTargetClassId = (dob: string | undefined, academicYear: number): number | null => {
+    const getTargetClassId = (dob: string | undefined, academicYear: number): number | null | -1 => {
         if (!dob) return null;
-        const classMap = new Map(mockClasses.map(c => [c.className, c.id]));
+        const classMap = new Map<string, number>(classes.map(c => [c.className, c.id]));
         const birthDate = new Date(dob);
 
         // Validation: Check if date is valid
@@ -183,9 +232,11 @@ const Settings: React.FC = () => {
         // 9-11歲: 少年班 (小四~小六)
         // 12-14歲: 國中班 (國一~國三)
         // 15-17歲: 高中班 (高一~高三)
-        // 18歲以上: 大專班
+        // 18-22歲: 大專班
+        // 23歲以上: 自動離校
 
-        if (age >= 18) return classMap.get('大專班') || classMap.get('高級班') || 6; // 大專/高級 (18+)
+        if (age >= 23) return -1; // 超過大專年齡，標記為應離校
+        if (age >= 18) return classMap.get('大專班') || classMap.get('高級班') || 6; // 大專/高級 (18-22)
         if (age >= 15) return classMap.get('高中班') || 5; // 高中 (15-17)
         if (age >= 12) return classMap.get('國中班') || 4; // 國中 (12-14)
         if (age >= 9) return classMap.get('少年班') || 3;  // 國小高年級 (9-11)
@@ -206,6 +257,7 @@ const Settings: React.FC = () => {
             setPromotionResult(null);
             let updatedCount = 0;
             let skippedCount = 0;
+            let graduatedCount = 0; // Track auto-graduated students
 
             try {
                 // Fetch all students from API
@@ -225,6 +277,18 @@ const Settings: React.FC = () => {
                         continue;
                     }
 
+                    // Handle auto-graduation (age >= 23)
+                    if (targetClassId === -1) {
+                        try {
+                            await studentService.update(student.id, { status: 'inactive' });
+                            graduatedCount++;
+                        } catch (error) {
+                            console.error('Failed to graduate student:', student.fullName, error);
+                            skippedCount++;
+                        }
+                        continue;
+                    }
+
                     if (student.classId !== targetClassId) {
                         try {
                             // Update via API
@@ -237,15 +301,15 @@ const Settings: React.FC = () => {
                     }
                 }
 
-                mockOperationLogs.push({
-                    id: mockOperationLogs.length + 1,
-                    timestamp: new Date().toISOString(),
+                // Log operation
+                await operationLogService.create({
                     type: '學年升班',
-                    description: `執行 ${rocYear} 學年度升班作業。成功更新 ${updatedCount} 位學員，因資料不全或狀態為離校而跳過 ${skippedCount} 位。`,
-                    user: '系統管理員'
+                    description: `執行 ${rocYear} 學年度升班作業。成功更新 ${updatedCount} 位學員，自動離校 ${graduatedCount} 位，跳過 ${skippedCount} 位。`,
+                    userId: 1, // TODO: Get from auth context
+                    metadata: { rocYear, updatedCount, graduatedCount, skippedCount }
                 });
 
-                setPromotionResult({ updated: updatedCount, skipped: skippedCount });
+                setPromotionResult({ updated: updatedCount, skipped: skippedCount, graduated: graduatedCount });
             } catch (error) {
                 console.error('Promotion failed:', error);
                 alert('升班作業失敗，請檢查網路連線或聯絡系統管理員。');
@@ -279,55 +343,55 @@ const Settings: React.FC = () => {
         });
     };
 
-    const handleSaveAssignments = () => {
+    const handleSaveAssignments = async () => {
         setIsSavingAssignments(true);
-        setTimeout(() => {
-            const otherYearsMappings = mockTeacherClassMap.filter(m => m.academicYear !== selectedYear);
-            let nextMapId = Math.max(0, ...mockTeacherClassMap.map(m => m.id)) + 1;
-            const newMappings = [];
+        setAssignmentSaveResult(null);
+
+        try {
+            const assignmentsArray = [];
+
             for (const classIdStr in assignments) {
                 const classId = parseInt(classIdStr, 10);
                 const { leadTeacherId, teacherIds } = assignments[classId];
+
                 if (leadTeacherId) {
-                    newMappings.push({
-                        id: nextMapId++,
-                        academicYear: selectedYear,
-                        classId: classId,
+                    assignmentsArray.push({
                         teacherId: parseInt(leadTeacherId, 10),
+                        classId: classId,
                         isLead: true,
                     });
                 }
+
                 teacherIds.forEach(teacherId => {
-                    newMappings.push({
-                        id: nextMapId++,
-                        academicYear: selectedYear,
-                        classId: classId,
+                    assignmentsArray.push({
                         teacherId: teacherId,
+                        classId: classId,
                         isLead: false,
                     });
                 });
             }
-            mockTeacherClassMap.length = 0;
-            Array.prototype.push.apply(mockTeacherClassMap, [...otherYearsMappings, ...newMappings]);
-            const rocYear = gregorianToRoc(parseInt(selectedYear, 10));
-            mockOperationLogs.push({
-                id: mockOperationLogs.length + 1,
-                timestamp: new Date().toISOString(),
-                type: '教員設定',
-                description: `更新 ${rocYear} 學年度的教員班級分配。`,
-                user: '系統管理員'
+
+            await teacherAssignmentService.batchUpsert({
+                academicYear: selectedYear,
+                assignments: assignmentsArray
             });
-            setIsSavingAssignments(false);
+
+            const rocYear = gregorianToRoc(parseInt(selectedYear, 10));
             setAssignmentSaveResult(`${rocYear} 學年度教員設定已成功儲存！`);
-        }, 1000);
+        } catch (error) {
+            console.error('Failed to save teacher assignments:', error);
+            setAssignmentSaveResult('儲存失敗，請檢查網路連線或聯絡系統管理員。');
+        } finally {
+            setIsSavingAssignments(false);
+        }
     };
 
     // --- Core Data Processing Logic (Shared for CSV/Excel Rows) ---
     // rows: 2D array of values (strings, numbers, etc.)
-    const processImportData = async (rows: any[][]) => {
-        let addedCount = 0;
-        let nextId = Math.max(0, ...mockStudents.map(s => s.id)) + 1;
+    const processImportData = (rows: any[][]) => {
+        const parsedStudents: any[] = [];
         let enrollmentIdCounter = 1000 + Date.now();
+        let tempId = 1;
 
         // Use current selected year for import calculation or default to current logic
         const importCalcYear = parseInt(selectedYear, 10);
@@ -344,8 +408,7 @@ const Settings: React.FC = () => {
                 if (!name) continue;
 
                 // Initialize Student Object
-                const student: Student = {
-                    id: nextId++,
+                const student: any = {
                     fullName: name,
                     studentType: StudentType.Member, // Default
                     status: 'active',
@@ -354,7 +417,7 @@ const Settings: React.FC = () => {
                     isSpiritBaptized: false,
                     enrollmentHistory: [],
                     historicalAttendance: [],
-                    attendanceRecords: [],
+                    notes: ''
                 };
 
                 // --- Parse Basic Info ---
@@ -497,33 +560,14 @@ const Settings: React.FC = () => {
                 // Default to 1 (幼兒班) if calculation fails
                 student.classId = calculatedClassId || 1;
 
-                // Save to database via API
-                try {
-                    await studentService.create({
-                        fullName: student.fullName,
-                        studentType: student.studentType,
-                        classId: student.classId,
-                        status: student.status,
-                        dob: student.dob,
-                        address: student.address,
-                        contactName: student.emergencyContactName,
-                        contactPhone: student.emergencyContactPhone,
-                        isBaptized: student.isBaptized,
-                        baptismDate: student.baptismDate,
-                        isSpiritBaptized: student.isSpiritBaptized,
-                        spiritBaptismDate: student.spiritBaptismDate,
-                        notes: student.notes
-                    });
-                    addedCount++;
-                } catch (error) {
-                    console.error('Failed to import student:', student.fullName, error);
-                }
+                parsedStudents.push(student);
+                tempId++;
 
                 // Advance i to where we finished scanning
                 i = j - 1;
             }
         }
-        return addedCount;
+        return parsedStudents;
     };
 
     const handleFileUpload = async (e: React.ChangeEvent<HTMLInputElement>) => {
@@ -536,26 +580,32 @@ const Settings: React.FC = () => {
         try {
             const data = await file.arrayBuffer();
             const workbook = XLSX.read(data, { type: 'array' });
-            let totalAdded = 0;
+
+            let allStudentsToImport: any[] = [];
 
             // Iterate through all sheets
             for (const sheetName of workbook.SheetNames) {
                 const sheet = workbook.Sheets[sheetName];
                 // Convert sheet to array of arrays. defval: '' ensures empty cells are empty strings
                 const rows = XLSX.utils.sheet_to_json(sheet, { header: 1, defval: '' }) as any[][];
-                const addedFromSheet = await processImportData(rows);
-                totalAdded += addedFromSheet;
+
+                // processImportData is now synchronous and returns array
+                const sheetStudents = processImportData(rows);
+                allStudentsToImport = allStudentsToImport.concat(sheetStudents);
             }
 
-            if (totalAdded > 0) {
-                mockOperationLogs.push({
-                    id: mockOperationLogs.length + 1,
-                    timestamp: new Date().toISOString(),
+            if (allStudentsToImport.length > 0) {
+                const result = await studentService.batchImport(allStudentsToImport);
+
+                // Log operation
+                await operationLogService.create({
                     type: '資料匯入',
-                    description: `從 Excel/CSV 匯入 ${totalAdded} 筆學員資料。`,
-                    user: '系統管理員'
+                    description: `從 Excel/CSV 匯入處理完成。建立: ${result.created}, 合併: ${result.merged}, 錯誤: ${result.errors}`,
+                    userId: 1, // TODO: Get from auth context
+                    metadata: { ...result }
                 });
-                setImportResult(`成功匯入 ${totalAdded} 筆資料！(含多頁籤處理)`);
+
+                setImportResult(`匯入完成！成功建立: ${result.created}, 合併資料: ${result.merged}, 錯誤: ${result.errors}`);
             } else {
                 setImportResult("未偵測到符合格式的學員資料，請檢查檔案內容。");
             }
@@ -569,6 +619,85 @@ const Settings: React.FC = () => {
             if (fileInputRef.current) {
                 fileInputRef.current.value = '';
             }
+        }
+    };
+
+    const scanForDuplicates = async () => {
+        setIsScanning(true);
+        setCleanupResult(null);
+        try {
+            const results = await studentService.findDuplicates();
+            setDuplicateGroups(results);
+            if (results.length === 0) {
+                setCleanupResult('未發現重複資料！');
+            } else {
+                setCleanupResult(null);
+            }
+        } catch (error) {
+            console.error('Scan failed:', error);
+            setCleanupResult('掃描失敗，請稍後再試');
+        } finally {
+            setIsScanning(false);
+        }
+    };
+
+    const handleResolveDuplicates = async (action: 'merge' | 'delete', group: Student[]) => {
+        if (!window.confirm(action === 'merge' ? '確定要將此群組合併至最早的資料嗎？(其他資料將被刪除，歷史紀錄將合併)' : '確定要刪除此群組的所有資料嗎？(此操作不可復原)')) return;
+
+        try {
+            if (action === 'merge') {
+                // Keep the first one (oldest by createdAt logic in backend)
+                const keepId = group[0].id;
+                const mergeIds = group.slice(1).map(s => s.id);
+                await studentService.resolveDuplicates({ action: 'merge', keepId, mergeIds });
+                setCleanupResult(`成功合併群組: ${group[0].fullName}`);
+            } else {
+                const deleteIds = group.map(s => s.id);
+                await studentService.resolveDuplicates({ action: 'delete', deleteIds });
+                setCleanupResult(`成功刪除 ${group.length} 筆資料`);
+            }
+            // Refresh scan
+            scanForDuplicates();
+        } catch (error) {
+            console.error('Resolve failed:', error);
+            alert('處理失敗');
+        }
+    };
+
+    const handleAutoMergeAll = async () => {
+        if (!duplicateGroups.length) return;
+        if (!window.confirm(`確定要自動合併所有 ${duplicateGroups.length} 組重複資料嗎？\n系統將自動保留最早建立的資料(ID最小)，並合併其餘資料的歷史紀錄。此操作不可復原。`)) return;
+
+        setIsAutoMerging(true);
+        let successCount = 0;
+        let failCount = 0;
+
+        try {
+            for (let i = 0; i < duplicateGroups.length; i++) {
+                const group = duplicateGroups[i];
+                if (group.length < 2) continue;
+
+                // Priority: Keep first one (assuming sorted by ID or sort here)
+                const sortedGroup = [...group].sort((a, b) => a.id - b.id);
+                const keepId = sortedGroup[0].id;
+                const mergeIds = sortedGroup.slice(1).map(s => s.id);
+
+                try {
+                    await studentService.resolveDuplicates({ action: 'merge', keepId, mergeIds });
+                    successCount++;
+                    setCleanupResult(`正在處理: ${i + 1}/${duplicateGroups.length} (成功: ${successCount})`);
+                } catch (e) {
+                    console.error('Auto merge failed for group', group[0].fullName, e);
+                    failCount++;
+                }
+            }
+            setCleanupResult(`批次處理完成！成功合併 ${successCount} 組，失敗 ${failCount} 組。`);
+            scanForDuplicates(); // Refresh
+        } catch (error) {
+            console.error('Batch merge error', error);
+            setCleanupResult('批次處理發生錯誤');
+        } finally {
+            setIsAutoMerging(false);
         }
     };
 
@@ -693,7 +822,7 @@ const Settings: React.FC = () => {
                 </div>
 
                 <div className="px-6 sm:px-8 py-6 space-y-6 bg-white">
-                    {mockClasses.map(cls => (
+                    {classes.map(cls => (
                         <div key={cls.id} className="p-5 border border-gray-100 bg-gray-50/50 rounded-2xl shadow-sm hover:shadow-md transition-shadow">
                             <div className="flex items-center mb-4">
                                 <span className="w-1 h-6 bg-church-blue-500 rounded-full mr-3"></span>
@@ -802,6 +931,96 @@ const Settings: React.FC = () => {
                             </div>
                         )}
                     </div>
+                </div>
+            </div>
+            {/* Data Cleanup Section */}
+            <div className="bg-white shadow-lg rounded-xl overflow-hidden mb-12">
+                <div className="p-6 sm:p-8 bg-gradient-to-r from-red-50 to-white border-b border-red-50">
+                    <h2 className="text-xl font-semibold text-gray-800 flex items-center">
+                        <div className="bg-red-100 p-2 rounded-lg mr-3">
+                            <span className="text-2xl">🧹</span>
+                        </div>
+                        資料清理 (重複資料移除)
+                    </h2>
+                    <p className="mt-3 text-gray-600 text-sm">
+                        系統將掃描姓名與出生日期完全相同的學生資料 (通常發生於重複匯入)。
+                    </p>
+                </div>
+
+                <div className="p-6 sm:p-8 bg-white">
+                    <div className="flex items-center space-x-4 mb-6">
+                        <button
+                            onClick={scanForDuplicates}
+                            disabled={isScanning}
+                            className="bg-red-500 text-white px-6 py-2 rounded-xl font-bold hover:bg-red-600 transition-colors shadow-md disabled:bg-gray-300 disabled:cursor-not-allowed"
+                        >
+                            {isScanning ? '掃描中...' : '掃描重複資料'}
+                        </button>
+                        {duplicateGroups.length > 0 && (
+                            <button
+                                onClick={handleAutoMergeAll}
+                                disabled={isAutoMerging || isScanning}
+                                className="bg-yellow-500 text-white px-6 py-2 rounded-xl font-bold hover:bg-yellow-600 transition-colors shadow-md disabled:bg-gray-300 disabled:cursor-not-allowed ml-4"
+                            >
+                                {isAutoMerging ? '正在合併...' : `一鍵合併所有 (${duplicateGroups.length})`}
+                            </button>
+                        )}
+                        {cleanupResult && (
+                            <span className={`font-bold ${cleanupResult.includes('失敗') ? 'text-red-500' : 'text-green-600'}`}>
+                                {cleanupResult}
+                            </span>
+                        )}
+                    </div>
+
+                    {duplicateGroups.length > 0 && (
+                        <div className="space-y-6">
+                            {duplicateGroups.map((group, index) => (
+                                <div key={index} className="border border-gray-200 rounded-2xl p-6 bg-gray-50 shadow-sm">
+                                    <div className="flex justify-between items-center mb-4 flex-wrap gap-2">
+                                        <h4 className="font-bold text-lg flex items-center">
+                                            <span className="bg-red-100 text-red-600 px-3 py-1 rounded-lg mr-3 text-sm">重複群組 {index + 1}</span>
+                                            {group[0].fullName}
+                                            <span className="text-gray-400 text-sm ml-2 font-normal">
+                                                ({group[0].dob ? new Date(group[0].dob).toLocaleDateString() : '無生日'})
+                                            </span>
+                                        </h4>
+                                        <div className="flex space-x-2">
+                                            <button
+                                                onClick={() => handleResolveDuplicates('merge', group)}
+                                                className="px-4 py-2 bg-blue-500 text-white rounded-xl text-sm font-bold hover:bg-blue-600 shadow-sm"
+                                            >
+                                                保留最早 (合併紀錄)
+                                            </button>
+                                            <button
+                                                onClick={() => handleResolveDuplicates('delete', group)}
+                                                className="px-4 py-2 bg-white border border-red-200 text-red-600 rounded-xl text-sm font-bold hover:bg-red-50"
+                                            >
+                                                全部刪除
+                                            </button>
+                                        </div>
+                                    </div>
+                                    <div className="grid gap-3">
+                                        {group.map(student => (
+                                            <div key={student.id} className="flex justify-between items-center p-3 bg-white rounded-xl border border-gray-100">
+                                                <div className="flex items-center space-x-4">
+                                                    <span className="font-mono text-gray-500 bg-gray-100 px-2 py-1 rounded text-xs">ID: {student.id}</span>
+                                                    <span className={`px-2 py-0.5 rounded-lg text-xs font-bold ${student.status === 'active' ? 'bg-green-100 text-green-600' : 'bg-gray-200 text-gray-500'}`}>
+                                                        {student.status}
+                                                    </span>
+                                                    <span className="text-sm text-gray-500">
+                                                        建立於: {student.createdAt ? new Date(student.createdAt).toLocaleDateString() : 'Unknown'}
+                                                    </span>
+                                                </div>
+                                                <div className="text-xs text-gray-400">
+                                                    {student.class?.name || '未分班'}
+                                                </div>
+                                            </div>
+                                        ))}
+                                    </div>
+                                </div>
+                            ))}
+                        </div>
+                    )}
                 </div>
             </div>
         </div>

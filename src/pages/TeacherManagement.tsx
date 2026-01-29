@@ -156,6 +156,9 @@ const TeacherManagement: React.FC = () => {
                                 狀態
                             </th>
                             <th scope="col" className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
+                                負責班級
+                            </th>
+                            <th scope="col" className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
                                 電話
                             </th>
                             <th scope="col" className="relative px-6 py-3">
@@ -166,7 +169,7 @@ const TeacherManagement: React.FC = () => {
                     <tbody className="bg-white divide-y divide-gray-200">
                         {isLoading ? (
                             <tr>
-                                <td colSpan={5} className="px-6 py-12 text-center text-sm text-gray-500">
+                                <td colSpan={6} className="px-6 py-12 text-center text-sm text-gray-500">
                                     <div className="flex justify-center items-center">
                                         <svg className="animate-spin h-5 w-5 mr-3 text-church-blue-600" viewBox="0 0 24 24">
                                             <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4" fill="none" />
@@ -186,6 +189,26 @@ const TeacherManagement: React.FC = () => {
                                             {getStatusName(teacher.status)}
                                         </span>
                                     </td>
+                                    <td className="px-6 py-4 text-sm text-gray-500">
+                                        {teacher.classAssignments && teacher.classAssignments.length > 0 ? (
+                                            <div className="flex flex-wrap gap-1">
+                                                {teacher.classAssignments.map((assignment: any) => (
+                                                    <span
+                                                        key={assignment.id}
+                                                        className={`px-2 py-1 text-xs rounded ${assignment.isLead
+                                                                ? 'bg-blue-100 text-blue-800 font-semibold'
+                                                                : 'bg-gray-100 text-gray-700'
+                                                            }`}
+                                                    >
+                                                        {assignment.class.name}
+                                                        {assignment.isLead && ' ★'}
+                                                    </span>
+                                                ))}
+                                            </div>
+                                        ) : (
+                                            <span className="text-gray-400">未分配</span>
+                                        )}
+                                    </td>
                                     <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-500">{teacher.phoneNumber || 'N/A'}</td>
                                     <td className="px-6 py-4 whitespace-nowrap text-right text-sm font-medium">
                                         <Link to={`/teachers/${teacher.id}`} className="text-church-blue-600 hover:text-church-blue-900">
@@ -196,7 +219,7 @@ const TeacherManagement: React.FC = () => {
                             ))
                         ) : (
                             <tr>
-                                <td colSpan={5} className="px-6 py-12 text-center text-sm text-gray-500">
+                                <td colSpan={6} className="px-6 py-12 text-center text-sm text-gray-500">
                                     找不到符合條件的教員。
                                 </td>
                             </tr>

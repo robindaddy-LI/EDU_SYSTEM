@@ -14,6 +14,11 @@ import studentsRouter from './routes/students';
 import teachersRouter from './routes/teachers';
 import classesRouter from './routes/classes';
 import usersRouter from './routes/users';
+import teacherAssignmentsRouter from './routes/teacherAssignments';
+import operationLogsRouter from './routes/operationLogs';
+import studentAttendanceRouter from './routes/studentAttendance';
+import teacherAttendanceRouter from './routes/teacherAttendance';
+import statisticsRouter from './routes/statistics';
 
 app.use(cors());
 app.use(express.json());
@@ -29,6 +34,11 @@ app.use('/api/v1/students', studentsRouter);
 app.use('/api/v1/teachers', teachersRouter);
 app.use('/api/v1/classes', classesRouter);
 app.use('/api/v1/users', usersRouter);
+app.use('/api/v1/teacher-assignments', teacherAssignmentsRouter);
+app.use('/api/v1/operation-logs', operationLogsRouter);
+app.use('/api/v1/student-attendance', studentAttendanceRouter);
+app.use('/api/v1/teacher-attendance', teacherAttendanceRouter);
+app.use('/api/v1/statistics', statisticsRouter);
 
 // Health check endpoint
 app.get('/api/v1/health', async (req, res) => {

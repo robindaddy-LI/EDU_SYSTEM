@@ -2,7 +2,7 @@
 import React, { useState, useEffect, useMemo } from 'react';
 import { useParams, Link } from 'react-router-dom';
 import { Student, StudentType, AttendanceStatus, HistoricalAttendance } from '../types';
-import { mockStudents, mockClasses, mockClassSessions, mockStudentAttendanceRecords } from '../data/mockData';
+import { studentService, statisticsService } from '../services';
 
 const StudentDetail: React.FC = () => {
     const { id } = useParams<{ id: string }>();
@@ -10,19 +10,16 @@ const StudentDetail: React.FC = () => {
     const [className, setClassName] = useState<string>('未分班');
     const [isLoading, setIsLoading] = useState(true);
     const [attendanceStats, setAttendanceStats] = useState({ present: 0, absent: 0, late: 0, excused: 0 });
-    
+
     // Combined grid data: key="RowLabel-ClassName", value=Percentage
     const [attendanceGrid, setAttendanceGrid] = useState<Record<string, number>>({});
-    
+
     // Editing Manual History
     const [isEditingHistory, setIsEditingHistory] = useState(false);
     const [manualHistoryBuffer, setManualHistoryBuffer] = useState<HistoricalAttendance[]>([]);
 
     const classHeaders = useMemo(() => {
-        const order = ['幼兒班', '幼年班', '少年班', '國中班', '高中班'];
-        return mockClasses
-            .map(c => c.className)
-            .sort((a, b) => order.indexOf(a) - order.indexOf(b));
+        return ['幼兒班', '幼年班', '少年班', '國中班', '高中班'];
     }, []);
 
     const rowLabels = ["學齡前(3歲)", "第一年", "第二年", "第三年"];
@@ -32,7 +29,7 @@ const StudentDetail: React.FC = () => {
         const year = date.getFullYear();
         const month = date.getMonth(); // 0-11
         // Academic year starts in September (month 8)
-        return month >= 8 ? year : year - 1; 
+        return month >= 8 ? year : year - 1;
     };
 
     const calculateAgeOnDate = (dob: string, onDateStr: string): number => {
@@ -47,92 +44,93 @@ const StudentDetail: React.FC = () => {
     };
 
     useEffect(() => {
-        const studentId = id ? parseInt(id, 10) : NaN;
-        const foundStudent = mockStudents.find(s => s.id === studentId);
-        
-        setStudent(foundStudent);
+        const fetchData = async () => {
+            if (!id) return;
+            setIsLoading(true);
+            try {
+                const studentId = parseInt(id, 10);
 
-        if (foundStudent) {
-            const foundClass = mockClasses.find(c => c.id === foundStudent.classId);
-            if (foundClass) {
-                setClassName(foundClass.className);
-            }
+                // 1. Fetch Student Details
+                const foundStudent = await studentService.getById(studentId);
+                setStudent(foundStudent);
 
-            setManualHistoryBuffer(foundStudent.historicalAttendance || []);
+                if (foundStudent) {
+                    setClassName(foundStudent.class?.name || '未分班');
+                    // Initialize Manual History Buffer with API data (needs casting/mapping if structure differs)
+                    setManualHistoryBuffer((foundStudent.historicalAttendance as HistoricalAttendance[]) || []);
+                }
 
-            // --- Calculate Attendance (using global mockStudentAttendanceRecords) ---
-            const stats = { present: 0, absent: 0, late: 0, excused: 0 };
-            
-            // Data structure for calculation: ClassName -> AcademicYear -> {attended, total}
-            const calcData: Record<string, Record<number, { attended: number, total: number }>> = {};
-
-            // Filter records for this student from the global array
-            const studentRecords = mockStudentAttendanceRecords.filter(r => r.studentId === studentId);
-
-            if (studentRecords.length > 0) {
-                 studentRecords.forEach(record => {
-                    switch (record.status) {
-                        case AttendanceStatus.Present: stats.present++; break;
-                        case AttendanceStatus.Absent: stats.absent++; break;
-                        case AttendanceStatus.Late: stats.late++; break;
-                        case AttendanceStatus.Excused: stats.excused++; break;
-                    }
-
-                    const session = mockClassSessions.find(s => s.id === record.sessionId);
-                    if (!session) return;
-                    const classInfo = mockClasses.find(c => c.id === session.classId);
-                    if (!classInfo) return;
-
-                    const ay = getAcademicYear(record.sessionDate);
-                    const cName = classInfo.className;
-
-                    if (!calcData[cName]) calcData[cName] = {};
-                    if (!calcData[cName][ay]) calcData[cName][ay] = { attended: 0, total: 0 };
-
-                    calcData[cName][ay].total++;
-                    if (record.status === AttendanceStatus.Present || record.status === AttendanceStatus.Late) {
-                        calcData[cName][ay].attended++;
-                    }
+                // 2. Fetch Statistics
+                const stats = await statisticsService.getStudentStats(studentId);
+                setAttendanceStats({
+                    present: stats.summary.present,
+                    absent: stats.summary.absent,
+                    late: stats.summary.late,
+                    excused: stats.summary.excused
                 });
-            }
-            setAttendanceStats(stats);
 
-            // Transform Calculation to Grid Format
-            const newGrid: Record<string, number> = {};
+                // 3. Construct Grid
+                const newGrid: Record<string, number> = {};
 
-            // 1. Apply Calculated Data
-            for (const cName in calcData) {
-                // Sort years ascending
-                const years = Object.keys(calcData[cName]).map(Number).sort((a, b) => a - b);
-                
-                years.forEach((ay, index) => {
-                    const { attended, total } = calcData[cName][ay];
-                    const percentage = total > 0 ? Math.round((attended / total) * 100) : 0;
+                // Helper to set grid value
+                const setVal = (row: string, cls: string, val: number) => {
+                    newGrid[`${row}-${cls}`] = val;
+                };
 
-                    let targetRow = "";
-                    // Logic to map Academic Year index to Row Label
-                    // Special case: 3yo in Preschool
-                    if (index === 0 && cName === '幼兒班' && foundStudent.dob) {
-                        const age = calculateAgeOnDate(foundStudent.dob, `${ay}-09-01`);
-                        if (age <= 3) targetRow = "學齡前(3歲)";
-                        else targetRow = "第一年";
-                    } else {
-                         // Default mapping logic (simplified for demo)
-                         if (index === 0) targetRow = "第一年";
-                         else if (index === 1) targetRow = "第二年";
-                         else if (index === 2) targetRow = "第三年";
-                    }
-
-                    if (targetRow) {
-                        newGrid[`${targetRow}-${cName}`] = percentage;
-                    }
+                // A. Process Aggregated Real History
+                // Group by ClassName
+                const dataByClass: Record<string, typeof stats.aggregatedHistory> = {};
+                stats.aggregatedHistory.forEach(h => {
+                    if (!dataByClass[h.className]) dataByClass[h.className] = [];
+                    dataByClass[h.className].push(h);
                 });
-            }
-            
-            setAttendanceGrid(newGrid);
 
-        }
-        setIsLoading(false);
+                // Map each class's years to rows
+                for (const cName in dataByClass) {
+                    const classHistory = dataByClass[cName].sort((a, b) => a.academicYear - b.academicYear);
+
+                    classHistory.forEach((h, index) => {
+                        let targetRow = "";
+
+                        // Special logic for "Kindergarten" / 幼兒班 age 3
+                        if (cName === '幼兒班' && foundStudent.dob) {
+                            const age = calculateAgeOnDate(foundStudent.dob, `${h.academicYear}-09-01`);
+                            if (age <= 3) targetRow = "學齡前(3歲)";
+                            else if (age === 4) targetRow = "第一年";
+                            else if (age === 5) targetRow = "第二年";
+                            // Fallback for older kids in preschool?
+                            else if (index === 0) targetRow = "第一年";
+                            else if (index === 1) targetRow = "第二年";
+                            else targetRow = "第三年";
+                        } else {
+                            // Default sequential mapping with "First Year" as index 0
+                            if (index === 0) targetRow = "第一年";
+                            else if (index === 1) targetRow = "第二年";
+                            else if (index === 2) targetRow = "第三年";
+                        }
+
+                        if (targetRow) {
+                            setVal(targetRow, cName, h.percentage);
+                        }
+                    });
+                }
+
+                // B. Process Manual History (Override/Merge)
+                // Note: The Grid UI prefers manualHistoryBuffer (state) over attendanceGrid (calculated) in getCellValue. 'attendanceGrid' is foundational.
+                // However, 'manualHistory' from API is already put into 'manualHistoryBuffer' via setManualHistoryBuffer above?
+                // Yes, 'student.historicalAttendance' is the manual history.
+                // So we don't need to put it into 'attendanceGrid'. getCellValue handles it.
+
+                setAttendanceGrid(newGrid);
+
+            } catch (error) {
+                console.error("Failed to load student details:", error);
+            } finally {
+                setIsLoading(false);
+            }
+        };
+
+        fetchData();
     }, [id]);
 
     const getStudentTypeName = (type: StudentType) => {
@@ -156,9 +154,9 @@ const StudentDetail: React.FC = () => {
             </dd>
         </div>
     );
-    
+
     const renderBooleanItem = (label: string, value: boolean, date?: string | null) => (
-         <div>
+        <div>
             <dt className="text-xs font-bold text-gray-400 uppercase tracking-wider">{label}</dt>
             <dd className="mt-1 text-base font-bold text-gray-800 flex items-center">
                 <span className={`w-3 h-3 rounded-full mr-2 ${value ? 'bg-green-400' : 'bg-red-400'}`}></span>
@@ -253,7 +251,7 @@ const StudentDetail: React.FC = () => {
                     {/* Church Status */}
                     <div className="bg-white shadow-cute rounded-3xl overflow-hidden border-4 border-white h-full">
                         <div className="p-6 border-b border-gray-100 bg-purple-50/30">
-                                <h2 className="text-xl font-black text-gray-700">教會狀態</h2>
+                            <h2 className="text-xl font-black text-gray-700">教會狀態</h2>
                         </div>
                         <div className="p-6 space-y-6">
                             <dl className="grid grid-cols-1 gap-y-4">
@@ -262,14 +260,14 @@ const StudentDetail: React.FC = () => {
                             </dl>
                         </div>
                     </div>
-                    
+
                     {/* Emergency Contact */}
                     <div className="bg-white shadow-cute rounded-3xl overflow-hidden border-4 border-white h-full">
                         <div className="p-6 border-b border-gray-100 bg-pink-50/30">
-                                <h2 className="text-xl font-black text-gray-700">緊急聯絡</h2>
+                            <h2 className="text-xl font-black text-gray-700">緊急聯絡</h2>
                         </div>
                         <div className="p-6 space-y-6">
-                                <dl className="grid grid-cols-1 gap-y-4">
+                            <dl className="grid grid-cols-1 gap-y-4">
                                 {renderDetailItem('姓名', student.emergencyContactName)}
                                 {renderDetailItem('電話', student.emergencyContactPhone)}
                             </dl>
@@ -279,14 +277,14 @@ const StudentDetail: React.FC = () => {
 
                 {/* Enrollment History */}
                 <div className="bg-white shadow-cute rounded-3xl overflow-hidden border-4 border-white">
-                        <div className="p-6 sm:p-8 border-b border-gray-100 flex items-center bg-green-50/30">
+                    <div className="p-6 sm:p-8 border-b border-gray-100 flex items-center bg-green-50/30">
                         <h2 className="text-xl font-black text-gray-700 flex items-center">
                             <span className="w-2 h-6 bg-cute-accent rounded-full mr-3"></span>
                             學歷 / 入學紀錄
                         </h2>
                     </div>
                     <div className="p-6 sm:p-8">
-                            {student.enrollmentHistory && student.enrollmentHistory.length > 0 ? (
+                        {student.enrollmentHistory && student.enrollmentHistory.length > 0 ? (
                             <ul className="relative border-l-2 border-gray-100 ml-3 space-y-6">
                                 {student.enrollmentHistory.map((record, idx) => (
                                     <li key={record.id} className="ml-6 relative">
@@ -311,7 +309,7 @@ const StudentDetail: React.FC = () => {
 
                 {/* Attendance History Table */}
                 <div className="bg-white shadow-cute rounded-3xl overflow-hidden border-4 border-white">
-                        <div className="p-6 sm:p-8 border-b border-gray-100 flex justify-between items-center bg-blue-50/30">
+                    <div className="p-6 sm:p-8 border-b border-gray-100 flex justify-between items-center bg-blue-50/30">
                         <h2 className="text-xl font-black text-gray-700 flex items-center">
                             <span className="w-2 h-6 bg-cute-primary rounded-full mr-3"></span>
                             歷年出席紀錄表
@@ -327,7 +325,7 @@ const StudentDetail: React.FC = () => {
                             </div>
                         )}
                     </div>
-                    
+
                     <div className="overflow-x-auto p-6">
                         <div className="inline-block min-w-full align-middle">
                             <div className="overflow-hidden border border-gray-200 rounded-2xl">
@@ -347,14 +345,14 @@ const StudentDetail: React.FC = () => {
                                                 {classHeaders.map(col => {
                                                     const val = getCellValue(row, col);
                                                     const isManual = manualHistoryBuffer.some(h => h.rowLabel === row && h.className === col);
-                                                    
+
                                                     return (
                                                         <td key={getCellKey(row, col)} className="px-2 py-2 whitespace-nowrap text-center relative group">
                                                             {isEditingHistory ? (
                                                                 <div className="relative">
-                                                                    <input 
-                                                                        type="number" 
-                                                                        min="0" max="100" 
+                                                                    <input
+                                                                        type="number"
+                                                                        min="0" max="100"
                                                                         className="w-16 text-center text-sm border border-gray-200 rounded-lg p-1 focus:ring-2 focus:ring-cute-primary focus:border-transparent bg-white text-gray-900"
                                                                         value={val !== null ? val : ''}
                                                                         onChange={(e) => handleManualChange(row, col, e.target.value)}
@@ -386,7 +384,7 @@ const StudentDetail: React.FC = () => {
                 {/* Important Notes (Keep at Bottom) */}
                 <div className="bg-white shadow-cute rounded-3xl overflow-hidden border-4 border-white">
                     <div className="p-6 border-b border-gray-100 bg-yellow-50/30">
-                            <h2 className="text-xl font-black text-gray-700">重要紀事</h2>
+                        <h2 className="text-xl font-black text-gray-700">重要紀事</h2>
                     </div>
                     <div className="p-6">
                         {student.notes ? (

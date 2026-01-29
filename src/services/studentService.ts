@@ -21,6 +21,8 @@ export interface StudentCreateData {
     isSpiritBaptized?: boolean;
     spiritBaptismDate?: string;
     notes?: string;
+    enrollmentHistory?: any[];
+    historicalAttendance?: any[];
 }
 
 export const studentService = {
@@ -51,6 +53,24 @@ export const studentService = {
     // Delete student (soft delete)
     async delete(id: number): Promise<{ success: boolean; message: string }> {
         const response = await apiClient.delete(`/students/${id}`);
+        return response.data;
+    },
+
+    // Find duplicates
+    async findDuplicates(): Promise<Array<Student[]>> {
+        const response = await apiClient.get('/students/duplicates/search');
+        return response.data;
+    },
+
+    // Resolve duplicates
+    async resolveDuplicates(data: { action: 'merge' | 'delete', keepId?: number, mergeIds?: number[], deleteIds?: number[] }): Promise<{ success: boolean; message: string }> {
+        const response = await apiClient.post('/students/duplicates/resolve', data);
+        return response.data;
+    },
+
+    // Batch Import
+    async batchImport(students: StudentCreateData[]): Promise<{ success: boolean; created: number; merged: number; errors: number }> {
+        const response = await apiClient.post('/students/import', { students });
         return response.data;
     }
 };
