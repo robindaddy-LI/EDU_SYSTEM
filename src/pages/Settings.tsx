@@ -2,6 +2,7 @@
 import React, { useState, useEffect, useMemo, useRef } from 'react';
 import { mockStudents, mockClasses, mockOperationLogs, mockTeachers, mockTeacherClassMap } from '../data/mockData';
 import { TeacherType, Teacher, Student, StudentType, EnrollmentHistory, HistoricalAttendance } from '../types';
+import studentService from '../services/studentService';
 // Import XLSX from CDN
 import * as XLSX from 'https://cdn.sheetjs.com/xlsx-0.20.3/package/xlsx.mjs';
 
@@ -27,16 +28,16 @@ const gregorianToRoc = (gregorianYear: number): number => {
 
 const parseDateString = (input: string | number | Date): string => {
     if (!input) return '';
-    
+
     // Handle Excel serial date (number)
     if (typeof input === 'number') {
         // Excel base date check (approximate)
-        if (input > 20000) { 
-             const date = new Date(Math.round((input - 25569) * 86400 * 1000));
-             return date.toISOString().split('T')[0];
+        if (input > 20000) {
+            const date = new Date(Math.round((input - 25569) * 86400 * 1000));
+            return date.toISOString().split('T')[0];
         }
         // If it's a small number (like year 108), let it fall through to string parsing or return as is
-        return input.toString(); 
+        return input.toString();
     }
 
     if (input instanceof Date) {
@@ -44,7 +45,7 @@ const parseDateString = (input: string | number | Date): string => {
     }
 
     const dateStr = String(input).trim();
-    
+
     // Handle ROC Format (e.g. 105.5.20, 108/01/01, 99-12-31)
     // Regex captures: Group 1 (Year), Group 2 (Month), Group 3 (Day)
     const rocMatch = dateStr.match(/^(\d{2,3})[./-](\d{1,2})[./-](\d{1,2})/);
@@ -58,7 +59,7 @@ const parseDateString = (input: string | number | Date): string => {
             return `${adYear}-${m}-${d}`;
         }
     }
-    
+
     // Handle 2008.10.2 format to 2008-10-02
     // Also handle YYYY/MM/DD
     let normalized = dateStr.replace(/\./g, '-').replace(/\//g, '-');
@@ -69,9 +70,9 @@ const parseDateString = (input: string | number | Date): string => {
         const yearNum = parseInt(y, 10);
         let finalYear = y;
         if (yearNum > 10 && yearNum < 1900) {
-             finalYear = (yearNum + 1911).toString();
+            finalYear = (yearNum + 1911).toString();
         }
-        
+
         const m = parts[1].padStart(2, '0');
         const d = parts[2].padStart(2, '0');
         return `${finalYear}-${m}-${d}`;
@@ -83,7 +84,7 @@ const parseBaptismInfo = (str: string): { is: boolean; date: string } => {
     if (!str) return { is: false, date: '' };
     const cleanStr = String(str).trim();
     // Assuming any content means yes, usually starts with V
-    const is = cleanStr.length > 0; 
+    const is = cleanStr.length > 0;
     let date = '';
     if (is) {
         // Extract content in parentheses: V (2015年) or V (2020.10.21...)
@@ -116,7 +117,7 @@ const mapClassName = (header: string): string => {
     if (h.includes('少年')) return '少年班';
     if (h.includes('初級')) return '國中班';
     if (h.includes('中級')) return '高中班';
-    if (h.includes('高級')) return '大專班'; 
+    if (h.includes('高級')) return '大專班';
     if (h.includes('大專')) return '大專班';
     if (h.includes('國中')) return '國中班';
     if (h.includes('高中')) return '高中班';
@@ -126,7 +127,7 @@ const mapClassName = (header: string): string => {
 const Settings: React.FC = () => {
     const [promotionResult, setPromotionResult] = useState<{ updated: number; skipped: number } | null>(null);
     const [isPromoting, setIsPromoting] = useState(false);
-    
+
     // State for teacher assignments
     const currentGregorianYear = getCurrentAcademicYear();
     const [selectedYear, setSelectedYear] = useState<string>(currentGregorianYear.toString());
@@ -138,7 +139,7 @@ const Settings: React.FC = () => {
     const [isImporting, setIsImporting] = useState(false);
     const [importResult, setImportResult] = useState<string | null>(null);
     const fileInputRef = useRef<HTMLInputElement>(null);
-    
+
     const activeTeachers = useMemo(() => mockTeachers.filter(t => t.status === 'active'), []);
     const formalActiveTeachers = useMemo(() => activeTeachers.filter(t => t.teacherType === TeacherType.Formal), [activeTeachers]);
 
@@ -163,19 +164,19 @@ const Settings: React.FC = () => {
         if (!dob) return null;
         const classMap = new Map(mockClasses.map(c => [c.className, c.id]));
         const birthDate = new Date(dob);
-        
+
         // Validation: Check if date is valid
         if (isNaN(birthDate.getTime())) return null;
 
         // 使用傳入的學年度 (9月1日) 作為基準日
         const referenceDate = new Date(academicYear, 8, 1); // 9月1日 (月份從0開始)
-        
+
         let age = referenceDate.getFullYear() - birthDate.getFullYear();
         const monthDifference = referenceDate.getMonth() - birthDate.getMonth();
         if (monthDifference < 0 || (monthDifference === 0 && referenceDate.getDate() < birthDate.getDate())) {
             age--;
         }
-        
+
         // 依據教會教育分班慣例 (以學齡為主，9/1 實歲)
         // 3-5歲: 幼兒班
         // 6-8歲: 幼年班 (小一~小三)
@@ -183,7 +184,7 @@ const Settings: React.FC = () => {
         // 12-14歲: 國中班 (國一~國三)
         // 15-17歲: 高中班 (高一~高三)
         // 18歲以上: 大專班
-        
+
         if (age >= 18) return classMap.get('大專班') || classMap.get('高級班') || 6; // 大專/高級 (18+)
         if (age >= 15) return classMap.get('高中班') || 5; // 高中 (15-17)
         if (age >= 12) return classMap.get('國中班') || 4; // 國中 (12-14)
@@ -192,7 +193,7 @@ const Settings: React.FC = () => {
         return classMap.get('幼兒班') || 1;                // 學齡前 (3-5)
     };
 
-    const handlePromoteStudents = () => {
+    const handlePromoteStudents = async () => {
         const targetYear = parseInt(selectedYear, 10);
         const rocYear = gregorianToRoc(targetYear);
 
@@ -205,41 +206,36 @@ const Settings: React.FC = () => {
             setPromotionResult(null);
             let updatedCount = 0;
             let skippedCount = 0;
-            const allEnrollmentRecords = mockStudents.flatMap(s => s.enrollmentHistory || []).filter(Boolean);
-            let nextEnrollmentId = Math.max(0, ...allEnrollmentRecords.map(r => r.id)) + 1;
 
-            setTimeout(() => {
-                mockStudents.forEach(student => {
+            try {
+                // Fetch all students from API
+                const allStudents = await studentService.getAll({ status: 'active' });
+
+                for (const student of allStudents) {
                     if (student.status === 'inactive') {
                         skippedCount++;
-                        return;
+                        continue;
                     }
-                    
+
                     // Use the selected year for calculation
                     const targetClassId = getTargetClassId(student.dob, targetYear);
-                    
+
                     if (targetClassId === null) {
                         skippedCount++;
-                        return;
+                        continue;
                     }
+
                     if (student.classId !== targetClassId) {
-                        const targetClassName = mockClasses.find(c => c.id === targetClassId)?.className;
-                        if (targetClassName) {
-                            if (!student.enrollmentHistory) {
-                                student.enrollmentHistory = [];
-                            }
-                            // Record the promotion history
-                            student.enrollmentHistory.push({
-                                id: nextEnrollmentId++,
-                                studentId: student.id,
-                                enrollmentDate: `${targetYear}-09-01`, // Use target year
-                                className: targetClassName,
-                            });
+                        try {
+                            // Update via API
+                            await studentService.update(student.id, { classId: targetClassId });
+                            updatedCount++;
+                        } catch (error) {
+                            console.error('Failed to promote student:', student.fullName, error);
+                            skippedCount++;
                         }
-                        student.classId = targetClassId;
-                        updatedCount++;
                     }
-                });
+                }
 
                 mockOperationLogs.push({
                     id: mockOperationLogs.length + 1,
@@ -248,14 +244,17 @@ const Settings: React.FC = () => {
                     description: `執行 ${rocYear} 學年度升班作業。成功更新 ${updatedCount} 位學員，因資料不全或狀態為離校而跳過 ${skippedCount} 位。`,
                     user: '系統管理員'
                 });
-                
-                setPromotionResult({ updated: updatedCount, skipped: skippedCount });
-                setIsPromoting(false);
 
-            }, 1000);
+                setPromotionResult({ updated: updatedCount, skipped: skippedCount });
+            } catch (error) {
+                console.error('Promotion failed:', error);
+                alert('升班作業失敗，請檢查網路連線或聯絡系統管理員。');
+            } finally {
+                setIsPromoting(false);
+            }
         }
     };
-    
+
     const handleLeadChange = (classId: number, leadTeacherId: string) => {
         setAssignments(prev => ({
             ...prev,
@@ -279,7 +278,7 @@ const Settings: React.FC = () => {
             };
         });
     };
-    
+
     const handleSaveAssignments = () => {
         setIsSavingAssignments(true);
         setTimeout(() => {
@@ -325,11 +324,11 @@ const Settings: React.FC = () => {
 
     // --- Core Data Processing Logic (Shared for CSV/Excel Rows) ---
     // rows: 2D array of values (strings, numbers, etc.)
-    const processImportData = (rows: any[][]) => {
+    const processImportData = async (rows: any[][]) => {
         let addedCount = 0;
         let nextId = Math.max(0, ...mockStudents.map(s => s.id)) + 1;
-        let enrollmentIdCounter = 1000 + Date.now(); 
-        
+        let enrollmentIdCounter = 1000 + Date.now();
+
         // Use current selected year for import calculation or default to current logic
         const importCalcYear = parseInt(selectedYear, 10);
 
@@ -363,9 +362,9 @@ const Settings: React.FC = () => {
                 if (i + 2 < rows.length) {
                     const valRow = rows[i + 2];
                     // Structure matches: ,DOB, WaterBaptism, SpiritBaptism, Father, Mother, Phone, ParentMobile
-                    
+
                     student.dob = parseDateString(valRow[1]);
-                    
+
                     const waterInfo = parseBaptismInfo(String(valRow[2] || ''));
                     student.isBaptized = waterInfo.is;
                     student.baptismDate = waterInfo.date;
@@ -377,11 +376,11 @@ const Settings: React.FC = () => {
                     const parents = [];
                     if (valRow[4]) parents.push(`父:${valRow[4]}`);
                     if (valRow[5]) parents.push(`母:${valRow[5]}`);
-                    
-                    const parentMobile = String(valRow[7] || ''); 
-                    
+
+                    const parentMobile = String(valRow[7] || '');
+
                     student.emergencyContactName = parents.join(' ') || '家長';
-                    student.emergencyContactPhone = parentMobile || String(valRow[6] || '') || ''; 
+                    student.emergencyContactPhone = parentMobile || String(valRow[6] || '') || '';
                 }
 
                 // Scan forward for other sections until next '基本資料' or End of rows
@@ -389,8 +388,8 @@ const Settings: React.FC = () => {
                 while (j < rows.length) {
                     const subRow = rows[j];
                     // Check if we hit next student
-                    if (j + 1 < rows.length && String(rows[j+1][0]).trim() === '基本資料') break;
-                    
+                    if (j + 1 < rows.length && String(rows[j + 1][0]).trim() === '基本資料') break;
+
                     // Guard against empty rows
                     if (!subRow || subRow.length === 0) {
                         j++;
@@ -408,7 +407,7 @@ const Settings: React.FC = () => {
                     // Header Row: 入學年月,幼兒,幼年...
                     if (sectionHeader === '入學年月') {
                         const headers = subRow;
-                        const values = rows[j+1]; // The row below header
+                        const values = rows[j + 1]; // The row below header
                         if (values) {
                             headers.forEach((header: any, idx: number) => {
                                 if (idx > 0 && values[idx]) {
@@ -417,7 +416,7 @@ const Settings: React.FC = () => {
                                     if (!isNaN(rocYear)) {
                                         const adYear = rocYear + 1911;
                                         const mappedClassName = mapClassName(header);
-                                        
+
                                         student.enrollmentHistory!.push({
                                             id: enrollmentIdCounter++,
                                             studentId: student.id,
@@ -441,8 +440,8 @@ const Settings: React.FC = () => {
                             const attRow = rows[k];
                             // Break if we hit next main section
                             const possibleHeader = String(attRow[0] || '').trim();
-                            if (possibleHeader === '重要紀事' || (k+1<rows.length && String(rows[k+1][0]).trim()==='基本資料')) break;
-                            
+                            if (possibleHeader === '重要紀事' || (k + 1 < rows.length && String(rows[k + 1][0]).trim() === '基本資料')) break;
+
                             const rowLabel = String(attRow[1] || '').trim(); // 第一年, 第二年...
                             if (rowLabel) {
                                 headers.forEach((header: any, idx: number) => {
@@ -477,30 +476,49 @@ const Settings: React.FC = () => {
                         const notesLines = [];
                         let k = j + 1;
                         while (k < rows.length) {
-                                // Stop at next student
-                                if (k + 1 < rows.length && String(rows[k+1][0]).trim() === '基本資料') break;
-                                
-                                // Collect non-empty lines
-                                const lineContent = rows[k].join(' ').trim().replace(/,+/g, '');
-                                if (lineContent) {
-                                    notesLines.push(lineContent);
-                                }
-                                k++;
+                            // Stop at next student
+                            if (k + 1 < rows.length && String(rows[k + 1][0]).trim() === '基本資料') break;
+
+                            // Collect non-empty lines
+                            const lineContent = rows[k].join(' ').trim().replace(/,+/g, '');
+                            if (lineContent) {
+                                notesLines.push(lineContent);
+                            }
+                            k++;
                         }
                         student.notes = notesLines.join('\n');
                     }
-                    
+
                     j++;
                 }
 
                 // Assign Class ID based on DOB and current selected year
                 const calculatedClassId = getTargetClassId(student.dob, importCalcYear);
                 // Default to 1 (幼兒班) if calculation fails
-                student.classId = calculatedClassId || 1; 
+                student.classId = calculatedClassId || 1;
 
-                mockStudents.push(student);
-                addedCount++;
-                
+                // Save to database via API
+                try {
+                    await studentService.create({
+                        fullName: student.fullName,
+                        studentType: student.studentType,
+                        classId: student.classId,
+                        status: student.status,
+                        dob: student.dob,
+                        address: student.address,
+                        contactName: student.emergencyContactName,
+                        contactPhone: student.emergencyContactPhone,
+                        isBaptized: student.isBaptized,
+                        baptismDate: student.baptismDate,
+                        isSpiritBaptized: student.isSpiritBaptized,
+                        spiritBaptismDate: student.spiritBaptismDate,
+                        notes: student.notes
+                    });
+                    addedCount++;
+                } catch (error) {
+                    console.error('Failed to import student:', student.fullName, error);
+                }
+
                 // Advance i to where we finished scanning
                 i = j - 1;
             }
@@ -521,13 +539,13 @@ const Settings: React.FC = () => {
             let totalAdded = 0;
 
             // Iterate through all sheets
-            workbook.SheetNames.forEach(sheetName => {
+            for (const sheetName of workbook.SheetNames) {
                 const sheet = workbook.Sheets[sheetName];
                 // Convert sheet to array of arrays. defval: '' ensures empty cells are empty strings
                 const rows = XLSX.utils.sheet_to_json(sheet, { header: 1, defval: '' }) as any[][];
-                const addedFromSheet = processImportData(rows);
+                const addedFromSheet = await processImportData(rows);
                 totalAdded += addedFromSheet;
-            });
+            }
 
             if (totalAdded > 0) {
                 mockOperationLogs.push({
@@ -561,51 +579,51 @@ const Settings: React.FC = () => {
         <div className="p-8 space-y-8">
             <h1 className="text-3xl font-bold text-gray-800">系統設定</h1>
 
-             {/* Year Selector Section (Moved to top to emphasize global effect) */}
-             <div className="bg-white shadow-lg rounded-xl overflow-hidden">
+            {/* Year Selector Section (Moved to top to emphasize global effect) */}
+            <div className="bg-white shadow-lg rounded-xl overflow-hidden">
                 <div className="p-6 sm:p-8 bg-gradient-to-r from-blue-50 to-white border-b border-blue-50">
                     <div className="flex justify-between items-start sm:items-center flex-col sm:flex-row gap-4">
-                            <h2 className="text-xl font-semibold text-gray-800 flex items-center">
-                                <div className="bg-blue-100 p-2 rounded-lg mr-3">
-                                    <svg xmlns="http://www.w3.org/2000/svg" className="h-6 w-6 text-church-blue-600" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-                                        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M8 7V3m8 4V3m-9 8h10M5 21h14a2 2 0 002-2V7a2 2 0 00-2-2H5a2 2 0 00-2 2v12a2 2 0 002 2z" />
-                                    </svg>
-                                </div>
-                                <div>
-                                    <span>目前設定學年度</span>
-                                </div>
-                            </h2>
-                            <div>
-                                <label htmlFor="year-select" className="sr-only">選擇學年度</label>
-                                <select 
-                                    id="year-select"
-                                    value={selectedYear}
-                                    onChange={e => setSelectedYear(e.target.value)}
-                                    className="rounded-lg border-gray-200 shadow-sm focus:border-church-blue-500 focus:ring-church-blue-500 sm:text-sm bg-white text-gray-900 py-2 pl-3 pr-8 font-bold"
-                                >
-                                    {yearsToShow.map(year => (
-                                        <option key={year} value={year.toString()}>
-                                            {gregorianToRoc(year)} 學年度 ({year})
-                                        </option>
-                                    ))}
-                                </select>
+                        <h2 className="text-xl font-semibold text-gray-800 flex items-center">
+                            <div className="bg-blue-100 p-2 rounded-lg mr-3">
+                                <svg xmlns="http://www.w3.org/2000/svg" className="h-6 w-6 text-church-blue-600" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M8 7V3m8 4V3m-9 8h10M5 21h14a2 2 0 002-2V7a2 2 0 00-2-2H5a2 2 0 00-2 2v12a2 2 0 002 2z" />
+                                </svg>
                             </div>
+                            <div>
+                                <span>目前設定學年度</span>
+                            </div>
+                        </h2>
+                        <div>
+                            <label htmlFor="year-select" className="sr-only">選擇學年度</label>
+                            <select
+                                id="year-select"
+                                value={selectedYear}
+                                onChange={e => setSelectedYear(e.target.value)}
+                                className="rounded-lg border-gray-200 shadow-sm focus:border-church-blue-500 focus:ring-church-blue-500 sm:text-sm bg-white text-gray-900 py-2 pl-3 pr-8 font-bold"
+                            >
+                                {yearsToShow.map(year => (
+                                    <option key={year} value={year.toString()}>
+                                        {gregorianToRoc(year)} 學年度 ({year})
+                                    </option>
+                                ))}
+                            </select>
                         </div>
-                        <p className="mt-3 text-gray-600 text-sm">
-                            此設定將影響下方「教員設定」的顯示年份，以及「學年升班」和「資料匯入」時的年齡計算基準日 (該年 9 月 1 日)。
-                        </p>
                     </div>
+                    <p className="mt-3 text-gray-600 text-sm">
+                        此設定將影響下方「教員設定」的顯示年份，以及「學年升班」和「資料匯入」時的年齡計算基準日 (該年 9 月 1 日)。
+                    </p>
+                </div>
             </div>
 
             {/* Import Section */}
             <div className="bg-white shadow-lg rounded-xl overflow-hidden">
                 <div className="p-6 sm:p-8 border-b border-gray-100 bg-gradient-to-r from-green-50 to-white">
-                     <h2 className="text-xl font-semibold text-gray-800 flex items-center">
-                         <div className="bg-green-100 p-2 rounded-lg mr-3">
+                    <h2 className="text-xl font-semibold text-gray-800 flex items-center">
+                        <div className="bg-green-100 p-2 rounded-lg mr-3">
                             <svg xmlns="http://www.w3.org/2000/svg" className="h-6 w-6 text-green-600" fill="none" viewBox="0 0 24 24" stroke="currentColor">
                                 <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M4 16v1a3 3 0 003 3h10a3 3 0 003-3v-1m-4-4l-4 4m0 0l-4-4m4 4V4" />
                             </svg>
-                         </div>
+                        </div>
                         匯入學員資料 (Excel / CSV)
                     </h2>
                     <p className="mt-3 text-gray-600">
@@ -639,11 +657,11 @@ const Settings: React.FC = () => {
                                     </>
                                 )}
                             </div>
-                            <input 
-                                ref={fileInputRef} 
-                                type="file" 
-                                className="hidden" 
-                                accept=".csv, application/vnd.openxmlformats-officedocument.spreadsheetml.sheet, application/vnd.ms-excel" 
+                            <input
+                                ref={fileInputRef}
+                                type="file"
+                                className="hidden"
+                                accept=".csv, application/vnd.openxmlformats-officedocument.spreadsheetml.sheet, application/vnd.ms-excel"
                                 onChange={handleFileUpload}
                                 disabled={isImporting}
                             />
@@ -674,118 +692,118 @@ const Settings: React.FC = () => {
                     </h2>
                 </div>
 
-                    <div className="px-6 sm:px-8 py-6 space-y-6 bg-white">
-                        {mockClasses.map(cls => (
-                            <div key={cls.id} className="p-5 border border-gray-100 bg-gray-50/50 rounded-2xl shadow-sm hover:shadow-md transition-shadow">
-                                <div className="flex items-center mb-4">
-                                    <span className="w-1 h-6 bg-church-blue-500 rounded-full mr-3"></span>
-                                    <h3 className="font-bold text-lg text-gray-800">{cls.className}</h3>
-                                </div>
-                                <div className="grid grid-cols-1 md:grid-cols-2 gap-8">
-                                    <div>
-                                        <label htmlFor={`lead-${cls.id}`} className="block text-xs font-bold text-gray-500 uppercase tracking-wider mb-2">班負責</label>
-                                        <div className="relative">
-                                            <select
-                                                id={`lead-${cls.id}`}
-                                                value={assignments[cls.id]?.leadTeacherId || ''}
-                                                onChange={(e) => handleLeadChange(cls.id, e.target.value)}
-                                                className="block w-full rounded-xl border-gray-200 shadow-sm focus:border-church-blue-500 focus:ring-church-blue-500 sm:text-sm bg-white text-gray-900 py-3 px-4"
-                                            >
-                                                <option value="">-- 未指定 --</option>
-                                                {formalActiveTeachers.map(t => <option key={t.id} value={t.id}>{t.fullName}</option>)}
-                                            </select>
-                                        </div>
+                <div className="px-6 sm:px-8 py-6 space-y-6 bg-white">
+                    {mockClasses.map(cls => (
+                        <div key={cls.id} className="p-5 border border-gray-100 bg-gray-50/50 rounded-2xl shadow-sm hover:shadow-md transition-shadow">
+                            <div className="flex items-center mb-4">
+                                <span className="w-1 h-6 bg-church-blue-500 rounded-full mr-3"></span>
+                                <h3 className="font-bold text-lg text-gray-800">{cls.className}</h3>
+                            </div>
+                            <div className="grid grid-cols-1 md:grid-cols-2 gap-8">
+                                <div>
+                                    <label htmlFor={`lead-${cls.id}`} className="block text-xs font-bold text-gray-500 uppercase tracking-wider mb-2">班負責</label>
+                                    <div className="relative">
+                                        <select
+                                            id={`lead-${cls.id}`}
+                                            value={assignments[cls.id]?.leadTeacherId || ''}
+                                            onChange={(e) => handleLeadChange(cls.id, e.target.value)}
+                                            className="block w-full rounded-xl border-gray-200 shadow-sm focus:border-church-blue-500 focus:ring-church-blue-500 sm:text-sm bg-white text-gray-900 py-3 px-4"
+                                        >
+                                            <option value="">-- 未指定 --</option>
+                                            {formalActiveTeachers.map(t => <option key={t.id} value={t.id}>{t.fullName}</option>)}
+                                        </select>
                                     </div>
-                                    <div>
-                                        <label className="block text-xs font-bold text-gray-500 uppercase tracking-wider mb-2">班級教員</label>
-                                        <div className="mt-1 space-y-2 max-h-40 overflow-y-auto border border-gray-200 p-3 rounded-xl bg-white custom-scrollbar">
-                                            {activeTeachers.map(t => {
-                                                const isLead = parseInt(assignments[cls.id]?.leadTeacherId, 10) === t.id;
-                                                return (
-                                                    <label key={t.id} className={`flex items-center p-2 rounded-lg hover:bg-gray-50 cursor-pointer ${isLead ? 'opacity-50 pointer-events-none' : ''}`}>
-                                                        <input
-                                                            type="checkbox"
-                                                            checked={assignments[cls.id]?.teacherIds.includes(t.id)}
-                                                            onChange={() => handleTeacherToggle(cls.id, t.id)}
-                                                            disabled={isLead}
-                                                            className="h-4 w-4 rounded border-gray-300 text-church-blue-600 focus:ring-church-blue-500 bg-white"
-                                                        />
-                                                        <span className={`ml-3 text-sm font-medium ${isLead ? 'text-gray-400' : 'text-gray-700'}`}>
-                                                            {t.fullName} {isLead && '(班負責)'}
-                                                        </span>
-                                                    </label>
-                                                );
-                                            })}
-                                        </div>
+                                </div>
+                                <div>
+                                    <label className="block text-xs font-bold text-gray-500 uppercase tracking-wider mb-2">班級教員</label>
+                                    <div className="mt-1 space-y-2 max-h-40 overflow-y-auto border border-gray-200 p-3 rounded-xl bg-white custom-scrollbar">
+                                        {activeTeachers.map(t => {
+                                            const isLead = parseInt(assignments[cls.id]?.leadTeacherId, 10) === t.id;
+                                            return (
+                                                <label key={t.id} className={`flex items-center p-2 rounded-lg hover:bg-gray-50 cursor-pointer ${isLead ? 'opacity-50 pointer-events-none' : ''}`}>
+                                                    <input
+                                                        type="checkbox"
+                                                        checked={assignments[cls.id]?.teacherIds.includes(t.id)}
+                                                        onChange={() => handleTeacherToggle(cls.id, t.id)}
+                                                        disabled={isLead}
+                                                        className="h-4 w-4 rounded border-gray-300 text-church-blue-600 focus:ring-church-blue-500 bg-white"
+                                                    />
+                                                    <span className={`ml-3 text-sm font-medium ${isLead ? 'text-gray-400' : 'text-gray-700'}`}>
+                                                        {t.fullName} {isLead && '(班負責)'}
+                                                    </span>
+                                                </label>
+                                            );
+                                        })}
                                     </div>
                                 </div>
                             </div>
-                        ))}
+                        </div>
+                    ))}
+                </div>
+
+                <div className="p-6 sm:p-8 border-t border-gray-100 bg-gray-50">
+                    <button
+                        onClick={handleSaveAssignments}
+                        disabled={isSavingAssignments}
+                        className="bg-church-blue-600 text-white px-8 py-3 rounded-xl hover:bg-church-blue-700 transition-all duration-200 flex items-center justify-center text-base font-bold shadow-lg shadow-church-blue-200 disabled:bg-gray-400 disabled:cursor-not-allowed disabled:shadow-none"
+                    >
+                        {isSavingAssignments ? '儲存中...' : `儲存 ${selectedRocYear} 學年度設定`}
+                    </button>
+                    {assignmentSaveResult && (
+                        <div className="mt-4 p-3 inline-block bg-green-100 border border-green-200 rounded-lg animate-fade-in text-sm text-green-800 font-bold px-4">
+                            ✓ {assignmentSaveResult}
+                        </div>
+                    )}
+                </div>
+            </div>
+
+            {/* Promotion Section */}
+            <div className="bg-white shadow-lg rounded-xl overflow-hidden">
+                <div className="p-6 sm:p-8 bg-gradient-to-r from-yellow-50 to-white border-b border-yellow-50">
+                    <h2 className="text-xl font-semibold text-gray-800 flex items-center">
+                        <div className="bg-yellow-100 p-2 rounded-lg mr-3">
+                            <svg xmlns="http://www.w3.org/2000/svg" className="h-6 w-6 text-yellow-600" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M13 7l5 5m0 0l-5 5m5-5H6" />
+                                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M13 17l5-5m0 0l-5-5m5 5H6" />
+                            </svg>
+                        </div>
+                        學年升班作業
+                    </h2>
+                    <p className="mt-3 text-gray-600 text-sm">
+                        自動根據出生年月日與上方選擇的 <strong>{gregorianToRoc(parseInt(selectedYear))} 學年度</strong> 基準日，計算學員年級並更新班級分配。
+                    </p>
+                    <div className="mt-4 p-4 bg-yellow-50 border-l-4 border-yellow-400 text-yellow-800 text-sm rounded-r-lg">
+                        <p className="font-bold mb-1">⚠️ 注意事項：</p>
+                        <ul className="list-disc list-inside space-y-1">
+                            <li>此為年度性操作，請於新學年開始時執行。</li>
+                            <li>僅處理「在學」學員，且必須有出生年月日資料。</li>
+                            <li>操作不可復原。</li>
+                        </ul>
                     </div>
 
-                    <div className="p-6 sm:p-8 border-t border-gray-100 bg-gray-50">
-                         <button
-                            onClick={handleSaveAssignments}
-                            disabled={isSavingAssignments}
-                            className="bg-church-blue-600 text-white px-8 py-3 rounded-xl hover:bg-church-blue-700 transition-all duration-200 flex items-center justify-center text-base font-bold shadow-lg shadow-church-blue-200 disabled:bg-gray-400 disabled:cursor-not-allowed disabled:shadow-none"
+                    <div className="mt-6">
+                        <button
+                            onClick={handlePromoteStudents}
+                            disabled={isPromoting}
+                            className="bg-yellow-500 text-white px-6 py-3 rounded-xl hover:bg-yellow-600 transition-all duration-200 flex items-center justify-center text-base font-bold shadow-lg shadow-yellow-200 disabled:bg-gray-400 disabled:cursor-not-allowed disabled:shadow-none"
                         >
-                            {isSavingAssignments ? '儲存中...' : `儲存 ${selectedRocYear} 學年度設定`}
+                            {isPromoting ? '處理中...' : `執行 ${gregorianToRoc(parseInt(selectedYear))} 學年度升班`}
                         </button>
-                        {assignmentSaveResult && (
-                            <div className="mt-4 p-3 inline-block bg-green-100 border border-green-200 rounded-lg animate-fade-in text-sm text-green-800 font-bold px-4">
-                                ✓ {assignmentSaveResult}
+
+                        {promotionResult && (
+                            <div className="mt-4 p-4 bg-green-50 border border-green-100 rounded-xl animate-fade-in">
+                                <h3 className="font-bold text-green-800 text-lg">🎉 升班作業完成！</h3>
+                                <p className="text-green-700 mt-1">
+                                    成功更新 <span className="font-black text-xl">{promotionResult.updated}</span> 位學員。
+                                </p>
+                                <p className="text-xs text-gray-500 mt-2">
+                                    (跳過 {promotionResult.skipped} 位：資料不全或已離校)
+                                </p>
                             </div>
                         )}
                     </div>
                 </div>
-
-                {/* Promotion Section */}
-                <div className="bg-white shadow-lg rounded-xl overflow-hidden">
-                    <div className="p-6 sm:p-8 bg-gradient-to-r from-yellow-50 to-white border-b border-yellow-50">
-                        <h2 className="text-xl font-semibold text-gray-800 flex items-center">
-                             <div className="bg-yellow-100 p-2 rounded-lg mr-3">
-                                 <svg xmlns="http://www.w3.org/2000/svg" className="h-6 w-6 text-yellow-600" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-                                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M13 7l5 5m0 0l-5 5m5-5H6" />
-                                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M13 17l5-5m0 0l-5-5m5 5H6" />
-                                 </svg>
-                             </div>
-                            學年升班作業
-                        </h2>
-                        <p className="mt-3 text-gray-600 text-sm">
-                            自動根據出生年月日與上方選擇的 <strong>{gregorianToRoc(parseInt(selectedYear))} 學年度</strong> 基準日，計算學員年級並更新班級分配。
-                        </p>
-                         <div className="mt-4 p-4 bg-yellow-50 border-l-4 border-yellow-400 text-yellow-800 text-sm rounded-r-lg">
-                            <p className="font-bold mb-1">⚠️ 注意事項：</p>
-                            <ul className="list-disc list-inside space-y-1">
-                                <li>此為年度性操作，請於新學年開始時執行。</li>
-                                <li>僅處理「在學」學員，且必須有出生年月日資料。</li>
-                                <li>操作不可復原。</li>
-                            </ul>
-                        </div>
-
-                        <div className="mt-6">
-                             <button
-                                onClick={handlePromoteStudents}
-                                disabled={isPromoting}
-                                className="bg-yellow-500 text-white px-6 py-3 rounded-xl hover:bg-yellow-600 transition-all duration-200 flex items-center justify-center text-base font-bold shadow-lg shadow-yellow-200 disabled:bg-gray-400 disabled:cursor-not-allowed disabled:shadow-none"
-                            >
-                                {isPromoting ? '處理中...' : `執行 ${gregorianToRoc(parseInt(selectedYear))} 學年度升班`}
-                            </button>
-                            
-                            {promotionResult && (
-                                <div className="mt-4 p-4 bg-green-50 border border-green-100 rounded-xl animate-fade-in">
-                                    <h3 className="font-bold text-green-800 text-lg">🎉 升班作業完成！</h3>
-                                    <p className="text-green-700 mt-1">
-                                        成功更新 <span className="font-black text-xl">{promotionResult.updated}</span> 位學員。
-                                    </p>
-                                    <p className="text-xs text-gray-500 mt-2">
-                                        (跳過 {promotionResult.skipped} 位：資料不全或已離校)
-                                    </p>
-                                </div>
-                            )}
-                        </div>
-                    </div>
-                </div>
+            </div>
         </div>
     );
 };

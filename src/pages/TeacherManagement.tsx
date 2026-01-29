@@ -1,36 +1,68 @@
 
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useCallback } from 'react';
 import { Link } from 'react-router-dom';
 import { Teacher, TeacherType } from '../types';
-import { mockTeachers, mockTeacherClassMap, mockClasses } from '../data/mockData';
+import { teacherService, classService } from '../services';
 import { useAuth } from '../AuthContext';
 
 const TeacherManagement: React.FC = () => {
     const { isAdmin, isClassLead, userClassId } = useAuth();
     const [searchTerm, setSearchTerm] = useState('');
-    const [statusFilter, setStatusFilter] = useState('active');
-    const [filteredTeachers, setFilteredTeachers] = useState<Teacher[]>([]);
+    const [statusFilter, setStatusFilter] = useState<'active' | 'inactive' | 'all'>('active');
+    const [teachers, setTeachers] = useState<Teacher[]>([]);
+    const [userClassName, setUserClassName] = useState<string>('');
+    const [isLoading, setIsLoading] = useState(true);
+    const [error, setError] = useState<string | null>(null);
+
+    // Fetch user's class name for display
+    useEffect(() => {
+        const fetchClassName = async () => {
+            if (isClassLead && userClassId) {
+                try {
+                    const classData = await classService.getById(userClassId);
+                    setUserClassName(classData.className);
+                } catch (err) {
+                    console.error('Failed to fetch class name:', err);
+                }
+            }
+        };
+        fetchClassName();
+    }, [isClassLead, userClassId]);
+
+    // Fetch teachers when filters change
+    const fetchTeachers = useCallback(async () => {
+        setIsLoading(true);
+        setError(null);
+        try {
+            const filter: { status?: 'active' | 'inactive'; search?: string } = {};
+
+            // Apply status filter
+            if (statusFilter !== 'all') {
+                filter.status = statusFilter;
+            }
+
+            // Apply search term
+            if (searchTerm.trim()) {
+                filter.search = searchTerm.trim();
+            }
+
+            const data = await teacherService.getAll(filter);
+            setTeachers(data);
+        } catch (err) {
+            console.error('Failed to fetch teachers:', err);
+            setError('無法載入教員資料，請稍後再試。');
+        } finally {
+            setIsLoading(false);
+        }
+    }, [statusFilter, searchTerm]);
 
     useEffect(() => {
-        let authorizedTeachers = mockTeachers;
-
-        // If user is Class Lead, they can only see teachers assigned to their class (current or past academic years? let's assume all time for simplicity, or just "teachers associated with this class")
-        if (isClassLead && userClassId) {
-            const teacherIdsInClass = new Set(
-                mockTeacherClassMap
-                    .filter(m => m.classId === userClassId)
-                    .map(m => m.teacherId)
-            );
-            authorizedTeachers = mockTeachers.filter(t => teacherIdsInClass.has(t.id));
-        }
-
-        const results = authorizedTeachers.filter(teacher => {
-            const matchesSearch = teacher.fullName.toLowerCase().includes(searchTerm.toLowerCase());
-            const matchesStatus = statusFilter === 'all' || teacher.status === statusFilter;
-            return matchesSearch && matchesStatus;
-        });
-        setFilteredTeachers(results);
-    }, [searchTerm, statusFilter, isClassLead, userClassId]);
+        // Debounce search
+        const timeoutId = setTimeout(() => {
+            fetchTeachers();
+        }, 300);
+        return () => clearTimeout(timeoutId);
+    }, [fetchTeachers]);
 
     const getTeacherTypeName = (type: TeacherType) => {
         switch (type) {
@@ -47,13 +79,11 @@ const TeacherManagement: React.FC = () => {
         return status === 'active' ? '在職' : '離職';
     };
 
-    const userClassName = userClassId ? mockClasses.find(c => c.id === userClassId)?.className : '';
-
     return (
         <div className="p-8">
             <div className="flex justify-between items-center mb-6">
                 <h1 className="text-3xl font-bold text-gray-800">教員管理</h1>
-                {isAdmin && ( // Only Admin can add new teachers globally
+                {isAdmin && (
                     <Link
                         to="/teachers/new"
                         className="bg-church-blue-600 text-white px-4 py-2 rounded-lg hover:bg-church-blue-700 transition-colors duration-200 flex items-center"
@@ -91,19 +121,26 @@ const TeacherManagement: React.FC = () => {
                 <div className="flex items-center space-x-4 bg-gray-100 p-2 rounded-lg">
                     <label className="text-sm font-medium text-gray-700">狀態:</label>
                     <div className="flex items-center">
-                        <input type="radio" id="statusActive" name="status" value="active" checked={statusFilter === 'active'} onChange={e => setStatusFilter(e.target.value)} className="h-4 w-4 text-church-blue-600 focus:ring-church-blue-500 border-gray-300"/>
+                        <input type="radio" id="statusActive" name="status" value="active" checked={statusFilter === 'active'} onChange={e => setStatusFilter(e.target.value as 'active')} className="h-4 w-4 text-church-blue-600 focus:ring-church-blue-500 border-gray-300" />
                         <label htmlFor="statusActive" className="ml-2 block text-sm text-gray-900">在職</label>
                     </div>
                     <div className="flex items-center">
-                        <input type="radio" id="statusInactive" name="status" value="inactive" checked={statusFilter === 'inactive'} onChange={e => setStatusFilter(e.target.value)} className="h-4 w-4 text-church-blue-600 focus:ring-church-blue-500 border-gray-300"/>
+                        <input type="radio" id="statusInactive" name="status" value="inactive" checked={statusFilter === 'inactive'} onChange={e => setStatusFilter(e.target.value as 'inactive')} className="h-4 w-4 text-church-blue-600 focus:ring-church-blue-500 border-gray-300" />
                         <label htmlFor="statusInactive" className="ml-2 block text-sm text-gray-900">離職</label>
                     </div>
                     <div className="flex items-center">
-                        <input type="radio" id="statusAll" name="status" value="all" checked={statusFilter === 'all'} onChange={e => setStatusFilter(e.target.value)} className="h-4 w-4 text-church-blue-600 focus:ring-church-blue-500 border-gray-300"/>
+                        <input type="radio" id="statusAll" name="status" value="all" checked={statusFilter === 'all'} onChange={e => setStatusFilter(e.target.value as 'all')} className="h-4 w-4 text-church-blue-600 focus:ring-church-blue-500 border-gray-300" />
                         <label htmlFor="statusAll" className="ml-2 block text-sm text-gray-900">全部</label>
                     </div>
                 </div>
             </div>
+
+            {error && (
+                <div className="mb-4 p-4 bg-red-50 text-red-700 rounded-lg">
+                    {error}
+                    <button onClick={fetchTeachers} className="ml-4 underline">重試</button>
+                </div>
+            )}
 
             <div className="bg-white shadow-md rounded-lg overflow-hidden">
                 <table className="min-w-full divide-y divide-gray-200">
@@ -118,7 +155,7 @@ const TeacherManagement: React.FC = () => {
                             <th scope="col" className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
                                 狀態
                             </th>
-                             <th scope="col" className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
+                            <th scope="col" className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
                                 電話
                             </th>
                             <th scope="col" className="relative px-6 py-3">
@@ -127,8 +164,20 @@ const TeacherManagement: React.FC = () => {
                         </tr>
                     </thead>
                     <tbody className="bg-white divide-y divide-gray-200">
-                        {filteredTeachers.length > 0 ? (
-                            filteredTeachers.map((teacher) => (
+                        {isLoading ? (
+                            <tr>
+                                <td colSpan={5} className="px-6 py-12 text-center text-sm text-gray-500">
+                                    <div className="flex justify-center items-center">
+                                        <svg className="animate-spin h-5 w-5 mr-3 text-church-blue-600" viewBox="0 0 24 24">
+                                            <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4" fill="none" />
+                                            <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z" />
+                                        </svg>
+                                        載入中...
+                                    </div>
+                                </td>
+                            </tr>
+                        ) : teachers.length > 0 ? (
+                            teachers.map((teacher) => (
                                 <tr key={teacher.id} className="hover:bg-gray-50">
                                     <td className="px-6 py-4 whitespace-nowrap text-sm font-medium text-gray-900">{teacher.fullName}</td>
                                     <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-500">{getTeacherTypeName(teacher.teacherType)}</td>
@@ -160,3 +209,4 @@ const TeacherManagement: React.FC = () => {
 };
 
 export default TeacherManagement;
+

@@ -1,14 +1,14 @@
 
-import React, { useState, useEffect, useMemo } from 'react';
+import React, { useState, useEffect, useMemo, useCallback } from 'react';
 import { Link, useParams, useNavigate } from 'react-router-dom';
 import { Class, ClassSession, Teacher, Student, AttendanceStatus } from '../types';
-import { mockClasses, mockClassSessions, mockTeachers, mockStudents, mockTeacherAttendanceRecords, mockStudentAttendanceRecords } from '../data/mockData';
+import { sessionService, classService } from '../services';
 import { useAuth } from '../AuthContext';
 
 interface LogbookData {
     session: ClassSession;
-    attendingTeachers: { teacher: Teacher; status: AttendanceStatus; reason?: string }[];
-    studentAttendance: { student: Student; status: AttendanceStatus; reason?: string }[];
+    attendingTeachers: { teacher: { id: number; fullName: string }; status: AttendanceStatus; reason?: string }[];
+    studentAttendance: { student: { id: number; fullName: string }; status: AttendanceStatus; reason?: string }[];
 }
 
 interface AttendanceEditState {
@@ -37,35 +37,35 @@ const getAttendanceStatusBadge = (status: AttendanceStatus, reason?: string) => 
     );
 };
 
-const AttendanceEditRow: React.FC<{ 
-    label: string, 
-    state: AttendanceEditState, 
+const AttendanceEditRow: React.FC<{
+    label: string,
+    state: AttendanceEditState,
     onChange: (field: keyof AttendanceEditState, value: string) => void
 }> = ({ label, state, onChange }) => {
     const buttons = [
-        { 
-            value: AttendanceStatus.Present, 
-            label: '出席', 
-            activeClass: 'bg-gradient-to-b from-green-400 to-green-500 text-white shadow-green-200 shadow-lg transform scale-110 ring-2 ring-green-100', 
-            baseClass: 'hover:bg-green-50 text-green-600 border-green-200 bg-white' 
+        {
+            value: AttendanceStatus.Present,
+            label: '出席',
+            activeClass: 'bg-gradient-to-b from-green-400 to-green-500 text-white shadow-green-200 shadow-lg transform scale-110 ring-2 ring-green-100',
+            baseClass: 'hover:bg-green-50 text-green-600 border-green-200 bg-white'
         },
-        { 
-            value: AttendanceStatus.Late, 
-            label: '遲到', 
-            activeClass: 'bg-gradient-to-b from-yellow-300 to-yellow-400 text-yellow-900 shadow-yellow-200 shadow-lg transform scale-110 ring-2 ring-yellow-100', 
-            baseClass: 'hover:bg-yellow-50 text-yellow-600 border-yellow-200 bg-white' 
+        {
+            value: AttendanceStatus.Late,
+            label: '遲到',
+            activeClass: 'bg-gradient-to-b from-yellow-300 to-yellow-400 text-yellow-900 shadow-yellow-200 shadow-lg transform scale-110 ring-2 ring-yellow-100',
+            baseClass: 'hover:bg-yellow-50 text-yellow-600 border-yellow-200 bg-white'
         },
-        { 
-            value: AttendanceStatus.Excused, 
-            label: '請假', 
-            activeClass: 'bg-gradient-to-b from-blue-400 to-blue-500 text-white shadow-blue-200 shadow-lg transform scale-110 ring-2 ring-blue-100', 
-            baseClass: 'hover:bg-blue-50 text-blue-600 border-blue-200 bg-white' 
+        {
+            value: AttendanceStatus.Excused,
+            label: '請假',
+            activeClass: 'bg-gradient-to-b from-blue-400 to-blue-500 text-white shadow-blue-200 shadow-lg transform scale-110 ring-2 ring-blue-100',
+            baseClass: 'hover:bg-blue-50 text-blue-600 border-blue-200 bg-white'
         },
-        { 
-            value: AttendanceStatus.Absent, 
-            label: '缺席', 
-            activeClass: 'bg-gradient-to-b from-red-400 to-red-500 text-white shadow-red-200 shadow-lg transform scale-110 ring-2 ring-red-100', 
-            baseClass: 'hover:bg-red-50 text-red-600 border-red-200 bg-white' 
+        {
+            value: AttendanceStatus.Absent,
+            label: '缺席',
+            activeClass: 'bg-gradient-to-b from-red-400 to-red-500 text-white shadow-red-200 shadow-lg transform scale-110 ring-2 ring-red-100',
+            baseClass: 'hover:bg-red-50 text-red-600 border-red-200 bg-white'
         },
     ];
 
@@ -74,23 +74,22 @@ const AttendanceEditRow: React.FC<{
             <span className="w-full sm:w-24 text-sm font-black text-gray-600 truncate shrink-0" title={label}>{label}</span>
             <div className="flex-grow flex flex-wrap items-center gap-3">
                 <div className="flex space-x-2">
-                     {buttons.map((btn) => (
+                    {buttons.map((btn) => (
                         <button
                             key={btn.value}
                             type="button"
                             onClick={() => onChange('status', btn.value)}
-                            className={`w-10 h-10 rounded-full flex items-center justify-center text-xs font-bold transition-all duration-200 border shadow-sm ${
-                                state.status === btn.value
-                                    ? `${btn.activeClass} border-transparent z-10`
-                                    : `${btn.baseClass}`
-                            }`}
+                            className={`w-10 h-10 rounded-full flex items-center justify-center text-xs font-bold transition-all duration-200 border shadow-sm ${state.status === btn.value
+                                ? `${btn.activeClass} border-transparent z-10`
+                                : `${btn.baseClass}`
+                                }`}
                         >
                             {btn.label.substring(0, 2)}
                         </button>
                     ))}
                 </div>
-                <input 
-                    type="text" 
+                <input
+                    type="text"
                     placeholder={state.status === AttendanceStatus.Present ? "出席" : "輸入原因..."}
                     value={state.reason}
                     onChange={e => onChange('reason', e.target.value)}
@@ -109,47 +108,71 @@ const ClassSessionDetailView: React.FC<{ sessionId: string }> = ({ sessionId }) 
     const navigate = useNavigate();
     const { isAdmin, userClassId } = useAuth();
     const [logbookData, setLogbookData] = useState<LogbookData | null>(null);
+    const [className, setClassName] = useState<string>('');
     const [isLoading, setIsLoading] = useState<boolean>(true);
+    const [isSaving, setIsSaving] = useState<boolean>(false);
+    const [error, setError] = useState<string | null>(null);
     const [isEditing, setIsEditing] = useState<boolean>(false);
     const [editableSession, setEditableSession] = useState<ClassSession | null>(null);
-    
+
     const [editableStudentAttendance, setEditableStudentAttendance] = useState<Record<number, AttendanceEditState>>({});
     const [editableTeacherAttendance, setEditableTeacherAttendance] = useState<Record<number, AttendanceEditState>>({});
 
-    useEffect(() => {
+    const fetchSession = useCallback(async () => {
         setIsLoading(true);
-        setIsEditing(false);
+        setError(null);
+        try {
+            const data = await sessionService.getById(parseInt(sessionId, 10));
 
-        setTimeout(() => {
-            const session = mockClassSessions.find(s => s.id === parseInt(sessionId, 10));
-            
-            if (session && !isAdmin && userClassId && session.classId !== userClassId) {
+            // Check permissions
+            if (!isAdmin && userClassId && data.session.classId !== userClassId) {
                 alert('您沒有權限檢視其他班級的紀錄。');
                 navigate('/class-logbook');
                 return;
             }
 
-            if (session) {
-                const teacherRecords = mockTeacherAttendanceRecords
-                    .filter(rec => rec.sessionId === session.id)
-                    .map(rec => ({ teacher: mockTeachers.find(t => t.id === rec.teacherId)!, status: rec.status, reason: rec.reason }))
-                    .filter(item => item.teacher);
-                const studentRecords = mockStudentAttendanceRecords
-                    .filter(rec => rec.sessionId === session.id)
-                    .map(rec => ({ student: mockStudents.find(s => s.id === rec.studentId)!, status: rec.status, reason: rec.reason }))
-                    .filter(item => item.student);
-                setLogbookData({ session, attendingTeachers: teacherRecords, studentAttendance: studentRecords });
-            } else {
-                setLogbookData(null);
+            // Fetch class name
+            try {
+                const classData = await classService.getById(data.session.classId);
+                setClassName(classData.className);
+            } catch {
+                setClassName('未知班級');
             }
+
+            // Transform data to match frontend types
+            const attendingTeachers = (data as any).attendingTeachers?.map((rec: any) => ({
+                teacher: rec.teacher,
+                status: rec.status as AttendanceStatus,
+                reason: rec.reason
+            })) || [];
+
+            const studentAttendance = (data as any).studentAttendance?.map((rec: any) => ({
+                student: rec.student,
+                status: rec.status as AttendanceStatus,
+                reason: rec.reason
+            })) || [];
+
+            setLogbookData({
+                session: data.session,
+                attendingTeachers,
+                studentAttendance
+            });
+        } catch (err) {
+            console.error('Failed to fetch session:', err);
+            setError('無法載入紀錄資料');
+        } finally {
             setIsLoading(false);
-        }, 300);
+        }
     }, [sessionId, isAdmin, userClassId, navigate]);
+
+    useEffect(() => {
+        fetchSession();
+    }, [fetchSession]);
 
     const handleEditClick = () => {
         if (logbookData) {
             setEditableSession({ ...logbookData.session });
-            
+
             const sAttendance: Record<number, AttendanceEditState> = {};
             logbookData.studentAttendance.forEach(r => {
                 sAttendance[r.student.id] = { status: r.status, reason: r.reason || '' };
@@ -165,56 +188,45 @@ const ClassSessionDetailView: React.FC<{ sessionId: string }> = ({ sessionId }) 
             setIsEditing(true);
         }
     };
-    
+
     const handleCancelClick = () => {
         setIsEditing(false);
         setEditableSession(null);
     };
 
-    const handleSaveClick = () => {
+    const handleSaveClick = async () => {
         if (!editableSession || !logbookData) return;
-        
-        const sessionIdInt = parseInt(sessionId, 10);
-        const sessionIndex = mockClassSessions.findIndex(s => s.id === editableSession.id);
-        if (sessionIndex !== -1) {
-            mockClassSessions[sessionIndex] = editableSession;
+
+        setIsSaving(true);
+        try {
+            // Update session details
+            await sessionService.update(editableSession.id, editableSession);
+
+            // Update attendance records
+            const students = Object.entries(editableStudentAttendance).map(([id, data]: [string, AttendanceEditState]) => ({
+                studentId: parseInt(id, 10),
+                status: data.status,
+                reason: data.reason || undefined
+            }));
+
+            const teachers = Object.entries(editableTeacherAttendance).map(([id, data]: [string, AttendanceEditState]) => ({
+                teacherId: parseInt(id, 10),
+                status: data.status,
+                reason: data.reason || undefined
+            }));
+
+            await sessionService.updateAttendance(editableSession.id, { students, teachers });
+
+            // Refresh data
+            await fetchSession();
+            setIsEditing(false);
+            setEditableSession(null);
+        } catch (err) {
+            console.error('Failed to save session:', err);
+            alert('儲存失敗，請稍後再試');
+        } finally {
+            setIsSaving(false);
         }
-
-        Object.entries(editableStudentAttendance).forEach(([studentIdStr, data]) => {
-            const studentId = parseInt(studentIdStr, 10);
-            const recordIndex = mockStudentAttendanceRecords.findIndex(r => r.sessionId === sessionIdInt && r.studentId === studentId);
-            if (recordIndex !== -1) {
-                const val = data as AttendanceEditState;
-                mockStudentAttendanceRecords[recordIndex] = { ...mockStudentAttendanceRecords[recordIndex], status: val.status, reason: val.reason || undefined };
-            }
-        });
-
-        Object.entries(editableTeacherAttendance).forEach(([teacherIdStr, data]) => {
-            const teacherId = parseInt(teacherIdStr, 10);
-            const recordIndex = mockTeacherAttendanceRecords.findIndex(r => r.sessionId === sessionIdInt && r.teacherId === teacherId);
-            if (recordIndex !== -1) {
-                const val = data as AttendanceEditState;
-                mockTeacherAttendanceRecords[recordIndex] = { ...mockTeacherAttendanceRecords[recordIndex], status: val.status, reason: val.reason || undefined };
-            }
-        });
-
-        const updatedStudentRecords = logbookData.studentAttendance.map(r => {
-             const editData = editableStudentAttendance[r.student.id];
-             return { ...r, status: editData.status, reason: editData.reason || undefined };
-        });
-        const updatedTeacherRecords = logbookData.attendingTeachers.map(r => {
-             const editData = editableTeacherAttendance[r.teacher.id];
-             return { ...r, status: editData.status, reason: editData.reason || undefined };
-        });
-
-        setLogbookData({ 
-            session: editableSession, 
-            studentAttendance: updatedStudentRecords, 
-            attendingTeachers: updatedTeacherRecords 
-        });
-       
-        setIsEditing(false);
-        setEditableSession(null);
     };
 
     const handleInputChange = (e: React.ChangeEvent<HTMLInputElement | HTMLTextAreaElement>) => {
@@ -222,7 +234,7 @@ const ClassSessionDetailView: React.FC<{ sessionId: string }> = ({ sessionId }) 
         const isCheckbox = type === 'checkbox';
 
         if (editableSession) {
-             setEditableSession(prev => {
+            setEditableSession(prev => {
                 if (!prev) return null;
                 return {
                     ...prev,
@@ -238,27 +250,45 @@ const ClassSessionDetailView: React.FC<{ sessionId: string }> = ({ sessionId }) 
 
     const handleStudentAttendanceChange = (studentId: number, field: keyof AttendanceEditState, value: string) => {
         setEditableStudentAttendance(prev => {
-             const newState = { ...prev[studentId], [field]: value };
-             if (field === 'status' && value === AttendanceStatus.Present) {
-                 newState.reason = '';
-             }
-             return { ...prev, [studentId]: newState };
+            const newState = { ...prev[studentId], [field]: value };
+            if (field === 'status' && value === AttendanceStatus.Present) {
+                newState.reason = '';
+            }
+            return { ...prev, [studentId]: newState };
         });
     };
 
     const handleTeacherAttendanceChange = (teacherId: number, field: keyof AttendanceEditState, value: string) => {
         setEditableTeacherAttendance(prev => {
-             const newState = { ...prev[teacherId], [field]: value };
-             if (field === 'status' && value === AttendanceStatus.Present) {
-                 newState.reason = '';
-             }
-             return { ...prev, [teacherId]: newState };
+            const newState = { ...prev[teacherId], [field]: value };
+            if (field === 'status' && value === AttendanceStatus.Present) {
+                newState.reason = '';
+            }
+            return { ...prev, [teacherId]: newState };
         });
     };
 
-    if (isLoading) return <div className="p-8 text-center text-gray-500 font-bold">讀取紀錄中...</div>;
+    if (isLoading) return (
+        <div className="p-8 text-center text-gray-500 font-bold">
+            <div className="flex justify-center items-center">
+                <svg className="animate-spin h-5 w-5 mr-3 text-church-blue-600" viewBox="0 0 24 24">
+                    <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4" fill="none" />
+                    <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z" />
+                </svg>
+                讀取紀錄中...
+            </div>
+        </div>
+    );
+
+    if (error) return (
+        <div className="p-8 text-center">
+            <p className="text-red-500 font-bold">{error}</p>
+            <button onClick={fetchSession} className="mt-4 text-cute-primary underline">重試</button>
+        </div>
+    );
+
     if (!logbookData) return <div className="p-8 text-center text-gray-500">找不到紀錄</div>;
-    
+
     const { session, attendingTeachers, studentAttendance } = logbookData;
     const totalAttendees = studentAttendance.filter(s => s.status === AttendanceStatus.Present || s.status === AttendanceStatus.Late).length + session.auditorCount;
     const backLink = `/class-logbook/class/${session.classId}`;
@@ -273,21 +303,21 @@ const ClassSessionDetailView: React.FC<{ sessionId: string }> = ({ sessionId }) 
                             <Link to={backLink} className="inline-flex items-center px-4 py-1.5 rounded-full bg-gray-100 text-xs font-bold text-gray-500 hover:bg-gray-200 mb-3 transition-colors">
                                 &larr; 返回列表
                             </Link>
-                            <h2 className="text-3xl font-black text-gray-800 mb-1">{mockClasses.find(c => c.id === session.classId)?.className} 紀錄簿</h2>
+                            <h2 className="text-3xl font-black text-gray-800 mb-1">{className} 紀錄簿</h2>
                             <p className="text-gray-500 font-bold flex items-center mt-2">
                                 <span className="bg-gray-100 px-3 py-1 rounded-lg text-sm mr-2">{session.sessionDate}</span>
                                 <span className="bg-cute-primary/10 text-cute-primary px-3 py-1 rounded-lg text-sm">{session.sessionType}</span>
                             </p>
                         </div>
                         {!isEditing ? (
-                             <button onClick={handleEditClick} className="flex items-center bg-cute-primary text-white px-6 py-3 rounded-full hover:bg-blue-500 hover:shadow-lg transition-all font-bold shadow-md">
+                            <button onClick={handleEditClick} className="flex items-center bg-cute-primary text-white px-6 py-3 rounded-full hover:bg-blue-500 hover:shadow-lg transition-all font-bold shadow-md">
                                 <svg xmlns="http://www.w3.org/2000/svg" className="h-5 w-5 mr-2" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2.5} d="M15.232 5.232l3.536 3.536m-2.036-5.036a2.5 2.5 0 113.536 3.536L6.5 21.036H3v-3.5L16.732 3.732z" /></svg>
                                 編輯紀錄
                             </button>
                         ) : (
                             <div className="flex space-x-3">
-                                <button onClick={handleSaveClick} className="flex items-center bg-green-500 text-white px-6 py-3 rounded-full hover:bg-green-600 hover:shadow-lg transform hover:-translate-y-0.5 transition-all font-bold shadow-md">
-                                    儲存
+                                <button onClick={handleSaveClick} disabled={isSaving} className="flex items-center bg-green-500 text-white px-6 py-3 rounded-full hover:bg-green-600 hover:shadow-lg transform hover:-translate-y-0.5 transition-all font-bold shadow-md disabled:opacity-50">
+                                    {isSaving ? '儲存中...' : '儲存'}
                                 </button>
                                 <button onClick={handleCancelClick} className="flex items-center bg-gray-200 text-gray-600 px-6 py-3 rounded-full hover:bg-gray-300 transition-all font-bold">
                                     取消
@@ -295,16 +325,16 @@ const ClassSessionDetailView: React.FC<{ sessionId: string }> = ({ sessionId }) 
                             </div>
                         )}
                     </div>
-                    
+
                     {session.isCancelled && !isEditing && (
                         <div className="mb-8 p-6 bg-red-50 border-2 border-red-100 text-red-800 rounded-3xl text-center shadow-sm">
                             <p className="font-black text-3xl mb-2">🚫 本日已停課</p>
                             <p className="text-red-600 font-bold bg-white/50 inline-block px-4 py-1 rounded-xl">原因：{session.cancellationReason || '未提供'}</p>
                         </div>
                     )}
-                    
+
                     {isEditing && editableSession && (
-                         <div className="mb-8 p-6 border-2 border-dashed border-red-200 rounded-3xl bg-red-50/30">
+                        <div className="mb-8 p-6 border-2 border-dashed border-red-200 rounded-3xl bg-red-50/30">
                             <div className="flex items-center mb-4">
                                 <input id="isCancelled" name="isCancelled" type="checkbox" checked={editableSession.isCancelled || false} onChange={handleInputChange} className="w-6 h-6 text-red-500 rounded-lg focus:ring-red-400 border-gray-300" />
                                 <label htmlFor="isCancelled" className="ml-3 font-black text-lg text-gray-700">標示為停課</label>
@@ -318,7 +348,7 @@ const ClassSessionDetailView: React.FC<{ sessionId: string }> = ({ sessionId }) 
                         </div>
                     )}
 
-                     {!isEditing && !session.isCancelled && (
+                    {!isEditing && !session.isCancelled && (
                         <div className="absolute top-8 right-8 sm:right-48 hidden md:block">
                             <div className="text-center bg-blue-50 p-4 rounded-3xl border-4 border-white shadow-cute">
                                 <p className="text-xs font-bold text-blue-400 uppercase tracking-wider mb-1">實到人數</p>
@@ -342,7 +372,7 @@ const ClassSessionDetailView: React.FC<{ sessionId: string }> = ({ sessionId }) 
                                         <div><label htmlFor="activityTeacherName" className="block text-sm font-bold text-gray-600 mb-1">共習課程老師</label><input type="text" id="activityTeacherName" name="activityTeacherName" list="teacher-list" value={editableSession.activityTeacherName || ''} onChange={handleInputChange} className={formInputClass} /></div>
                                         <datalist id="teacher-list">{attendingTeachers.map(({ teacher }) => (<option key={teacher.id} value={teacher.fullName} />))}</datalist>
                                     </>
-                                ) : ( !session.isCancelled &&
+                                ) : (!session.isCancelled &&
                                     <>
                                         <div className="p-4 bg-white rounded-2xl shadow-sm"><p className="text-xs font-bold text-purple-400 uppercase mb-1">崇拜課程主題</p><p className="text-gray-800 font-black text-xl">{session.worshipTopic || '未填寫'}</p></div>
                                         <div className="p-4 bg-white/50 rounded-2xl border border-purple-100"><p className="text-xs font-bold text-gray-400 uppercase mb-1">崇拜課程老師</p><p className="text-gray-700 font-bold">{session.worshipTeacherName || '未填寫'}</p></div>
@@ -352,7 +382,7 @@ const ClassSessionDetailView: React.FC<{ sessionId: string }> = ({ sessionId }) 
                                 )}
                             </div>
                         </div>
-                        
+
                         {!session.isCancelled && (
                             <div className="grid grid-cols-1 lg:grid-cols-2 gap-8 mb-8">
                                 <div className="bg-orange-50/30 p-6 rounded-3xl border-4 border-white shadow-sm">
@@ -400,7 +430,7 @@ const ClassSessionDetailView: React.FC<{ sessionId: string }> = ({ sessionId }) 
                                             <div><label htmlFor="auditorCount" className="block text-sm font-bold text-gray-600 mb-1">👀 旁聽人數</label><input type="number" id="auditorCount" name="auditorCount" min="0" value={editableSession.auditorCount} onChange={handleInputChange} className={formInputClass} /></div>
                                             <div><label htmlFor="offeringAmount" className="block text-sm font-bold text-gray-600 mb-1">💰 奉獻金額</label><input type="number" step="0.01" id="offeringAmount" name="offeringAmount" value={editableSession.offeringAmount} onChange={handleInputChange} className={formInputClass} /></div>
                                         </>
-                                    ) : ( !session.isCancelled &&
+                                    ) : (!session.isCancelled &&
                                         <>
                                             <div className="flex justify-between items-center border-b border-cyan-100/50 pb-4">
                                                 <span className="text-sm font-bold text-gray-500">👀 旁聽人數</span>
@@ -436,9 +466,42 @@ const ClassSessionDetailView: React.FC<{ sessionId: string }> = ({ sessionId }) 
 // ====================================================================
 const ClassLogbookListView: React.FC<{ classId: string }> = ({ classId }) => {
     const { isAdmin, userClassId } = useAuth();
-    const navigate = useNavigate();
+    const [sessions, setSessions] = useState<ClassSession[]>([]);
+    const [className, setClassName] = useState<string>('');
+    const [isLoading, setIsLoading] = useState(true);
+    const [error, setError] = useState<string | null>(null);
 
-    if (!isAdmin && userClassId && parseInt(classId) !== userClassId) {
+    const numericClassId = parseInt(classId, 10);
+
+    useEffect(() => {
+        const fetchData = async () => {
+            setIsLoading(true);
+            setError(null);
+            try {
+                // Check permissions
+                if (!isAdmin && userClassId && numericClassId !== userClassId) {
+                    setError('存取被拒');
+                    return;
+                }
+
+                // Fetch class name
+                const classData = await classService.getById(numericClassId);
+                setClassName(classData.className);
+
+                // Fetch sessions
+                const sessionData = await sessionService.getAll({ classId: numericClassId });
+                setSessions(sessionData.sort((a, b) => new Date(b.sessionDate).getTime() - new Date(a.sessionDate).getTime()));
+            } catch (err) {
+                console.error('Failed to fetch data:', err);
+                setError('無法載入資料');
+            } finally {
+                setIsLoading(false);
+            }
+        };
+        fetchData();
+    }, [numericClassId, isAdmin, userClassId]);
+
+    if (!isAdmin && userClassId && numericClassId !== userClassId) {
         return (
             <div className="p-8 text-center">
                 <h2 className="text-2xl font-bold text-red-500">🚫 存取被拒</h2>
@@ -447,23 +510,26 @@ const ClassLogbookListView: React.FC<{ classId: string }> = ({ classId }) => {
         );
     }
 
-    const numericClassId = parseInt(classId, 10);
-    const currentClass = mockClasses.find(c => c.id === numericClassId);
-    
-    const sessions = useMemo(() => mockClassSessions
-        .filter(s => s.classId === numericClassId)
-        .sort((a, b) => new Date(b.sessionDate).getTime() - new Date(a.sessionDate).getTime()),
-        [numericClassId]
+    if (isLoading) return (
+        <div className="p-8 text-center text-gray-500 font-bold">
+            <div className="flex justify-center items-center">
+                <svg className="animate-spin h-5 w-5 mr-3 text-church-blue-600" viewBox="0 0 24 24">
+                    <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4" fill="none" />
+                    <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z" />
+                </svg>
+                載入中...
+            </div>
+        </div>
     );
 
-    if (!currentClass) return <div className="p-8 text-center text-gray-500">找不到班級</div>;
+    if (error) return <div className="p-8 text-center text-red-500 font-bold">{error}</div>;
 
     return (
         <div className="p-4 sm:p-8">
             <div className="flex justify-between items-center mb-8">
                 <div>
                     {isAdmin && <Link to="/class-logbook" className="text-xs font-bold text-gray-400 hover:text-cute-primary mb-1 block transition-colors">&larr; 返回總覽</Link>}
-                    <h1 className="text-3xl font-black text-gray-800">{currentClass.className} 紀錄列表</h1>
+                    <h1 className="text-3xl font-black text-gray-800">{className} 紀錄列表</h1>
                 </div>
                 <Link to="/class-logbook/new" className="bg-cute-primary text-white px-6 py-3 rounded-full hover:bg-blue-500 shadow-cute hover:shadow-cute-hover hover:-translate-y-1 transition-all duration-300 font-bold flex items-center">
                     <svg xmlns="http://www.w3.org/2000/svg" className="h-5 w-5 mr-2" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2.5} d="M12 6v6m0 0v6m0-6h6m-6 0H6" /></svg>
@@ -509,23 +575,65 @@ const ClassLogbookListView: React.FC<{ classId: string }> = ({ classId }) => {
 // ====================================================================
 const ClassLogbookDashboardView: React.FC = () => {
     const { isAdmin, userClassId } = useAuth();
+    const [classes, setClasses] = useState<{ id: number; className: string; count: number }[]>([]);
+    const [isLoading, setIsLoading] = useState(true);
+    const [error, setError] = useState<string | null>(null);
 
-    const availableClasses = useMemo(() => {
-        if (isAdmin) return mockClasses;
-        if (userClassId) return mockClasses.filter(c => c.id === userClassId);
-        return [];
+    useEffect(() => {
+        const fetchData = async () => {
+            setIsLoading(true);
+            setError(null);
+            try {
+                const classData = await classService.getAll();
+
+                // Filter by user permissions
+                let filteredClasses = classData;
+                if (!isAdmin && userClassId) {
+                    filteredClasses = classData.filter(c => c.id === userClassId);
+                }
+
+                // Get session counts
+                const classesWithCounts = await Promise.all(
+                    filteredClasses.map(async (cls) => {
+                        try {
+                            const sessions = await sessionService.getAll({ classId: cls.id });
+                            return { id: cls.id, className: cls.className, count: sessions.length };
+                        } catch {
+                            return { id: cls.id, className: cls.className, count: 0 };
+                        }
+                    })
+                );
+
+                setClasses(classesWithCounts);
+            } catch (err) {
+                console.error('Failed to fetch data:', err);
+                setError('無法載入資料');
+            } finally {
+                setIsLoading(false);
+            }
+        };
+        fetchData();
     }, [isAdmin, userClassId]);
-
-    const sessionCounts = useMemo(() => availableClasses.map(cls => {
-        const count = mockClassSessions.filter(s => s.classId === cls.id).length;
-        return { ...cls, count };
-    }), [availableClasses]);
 
     const bgColors = ['bg-blue-100', 'bg-pink-100', 'bg-yellow-100', 'bg-green-100', 'bg-purple-100'];
     const textColors = ['text-blue-600', 'text-pink-600', 'text-yellow-600', 'text-green-600', 'text-purple-600'];
 
+    if (isLoading) return (
+        <div className="p-8 text-center text-gray-500 font-bold">
+            <div className="flex justify-center items-center">
+                <svg className="animate-spin h-5 w-5 mr-3 text-church-blue-600" viewBox="0 0 24 24">
+                    <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4" fill="none" />
+                    <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z" />
+                </svg>
+                載入中...
+            </div>
+        </div>
+    );
+
+    if (error) return <div className="p-8 text-center text-red-500 font-bold">{error}</div>;
+
     return (
-         <div className="p-4 sm:p-8">
+        <div className="p-4 sm:p-8">
             <div className="flex justify-between items-center mb-8">
                 <h1 className="text-3xl font-black text-gray-800">📚 班級紀錄簿</h1>
                 <Link to="/class-logbook/new" className="bg-cute-primary text-white px-6 py-3 rounded-full hover:bg-blue-500 shadow-cute hover:shadow-cute-hover hover:-translate-y-1 transition-all duration-300 font-bold flex items-center">
@@ -535,8 +643,8 @@ const ClassLogbookDashboardView: React.FC = () => {
             </div>
 
             <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-6">
-                {sessionCounts.length > 0 ? (
-                    sessionCounts.map((cls, index) => {
+                {classes.length > 0 ? (
+                    classes.map((cls, index) => {
                         const bgClass = bgColors[index % bgColors.length];
                         const textClass = textColors[index % textColors.length];
                         return (
@@ -544,7 +652,7 @@ const ClassLogbookDashboardView: React.FC = () => {
                                 <div className={`absolute top-0 right-0 w-32 h-32 -mr-10 -mt-10 rounded-full opacity-20 ${bgClass}`}></div>
                                 <div className="relative z-10">
                                     <div className={`w-14 h-14 rounded-2xl ${bgClass} ${textClass} flex items-center justify-center mb-4 shadow-inner`}>
-                                         <svg xmlns="http://www.w3.org/2000/svg" className="h-7 w-7" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2.5" d="M12 6.253v13m0-13C10.832 5.477 9.246 5 7.5 5S4.168 5.477 3 6.253v13C4.168 18.477 5.754 18 7.5 18s3.332.477 4.5 1.253m0-13C13.168 5.477 14.754 5 16.5 5c1.747 0 3.332.477 4.5 1.253v13C19.832 18.477 18.247 18 16.5 18c-1.746 0-3.332.477-4.5-1.253" /></svg>
+                                        <svg xmlns="http://www.w3.org/2000/svg" className="h-7 w-7" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2.5" d="M12 6.253v13m0-13C10.832 5.477 9.246 5 7.5 5S4.168 5.477 3 6.253v13C4.168 18.477 5.754 18 7.5 18s3.332.477 4.5 1.253m0-13C13.168 5.477 14.754 5 16.5 5c1.747 0 3.332.477 4.5 1.253v13C19.832 18.477 18.247 18 16.5 18c-1.746 0-3.332.477-4.5-1.253" /></svg>
                                     </div>
                                     <h2 className="text-2xl font-black text-gray-800 group-hover:text-cute-primary transition-colors">{cls.className}</h2>
                                     <p className="text-gray-400 font-bold mt-1">{cls.count} 筆紀錄</p>

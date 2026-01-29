@@ -1,7 +1,8 @@
 
-import React, { useState, useEffect, useMemo } from 'react';
+import React, { useState, useEffect, useMemo, useCallback } from 'react';
 import { User, UserRole } from '../types';
-import { mockUsers, mockClasses } from '../data/mockData';
+import { userService, classService } from '../services';
+import { ClassWithCounts } from '../services/classService';
 
 interface UserFormData {
     username: string;
@@ -10,14 +11,18 @@ interface UserFormData {
     role: UserRole;
     classId: string;
     status: 'active' | 'inactive';
-    password?: string; // Virtual field for UI
+    password?: string;
 }
 
 const UserManagement: React.FC = () => {
     const [users, setUsers] = useState<User[]>([]);
+    const [classes, setClasses] = useState<ClassWithCounts[]>([]);
     const [searchTerm, setSearchTerm] = useState('');
     const [roleFilter, setRoleFilter] = useState<string>('all');
-    
+    const [isLoading, setIsLoading] = useState(true);
+    const [error, setError] = useState<string | null>(null);
+    const [isSaving, setIsSaving] = useState(false);
+
     // Modal State
     const [isModalOpen, setIsModalOpen] = useState(false);
     const [editingUser, setEditingUser] = useState<User | null>(null);
@@ -31,21 +36,53 @@ const UserManagement: React.FC = () => {
         password: ''
     });
 
+    // Fetch classes on mount
     useEffect(() => {
-        // Load initial data
-        setUsers(mockUsers);
+        const fetchClasses = async () => {
+            try {
+                const data = await classService.getAll();
+                setClasses(data);
+            } catch (err) {
+                console.error('Failed to fetch classes:', err);
+            }
+        };
+        fetchClasses();
     }, []);
 
-    const filteredUsers = useMemo(() => {
-        return users.filter(user => {
-            const matchesSearch = 
-                user.username.toLowerCase().includes(searchTerm.toLowerCase()) ||
-                user.fullName.toLowerCase().includes(searchTerm.toLowerCase()) ||
-                (user.email && user.email.toLowerCase().includes(searchTerm.toLowerCase()));
-            const matchesRole = roleFilter === 'all' || user.role === roleFilter;
-            return matchesSearch && matchesRole;
-        });
-    }, [users, searchTerm, roleFilter]);
+    // Fetch users
+    const fetchUsers = useCallback(async () => {
+        setIsLoading(true);
+        setError(null);
+        try {
+            const filter: { role?: UserRole; search?: string } = {};
+            if (roleFilter !== 'all') {
+                filter.role = roleFilter as UserRole;
+            }
+            if (searchTerm.trim()) {
+                filter.search = searchTerm.trim();
+            }
+            const data = await userService.getAll(filter);
+            setUsers(data);
+        } catch (err) {
+            console.error('Failed to fetch users:', err);
+            setError('無法載入使用者資料，請稍後再試。');
+        } finally {
+            setIsLoading(false);
+        }
+    }, [roleFilter, searchTerm]);
+
+    useEffect(() => {
+        const timeoutId = setTimeout(() => {
+            fetchUsers();
+        }, 300);
+        return () => clearTimeout(timeoutId);
+    }, [fetchUsers]);
+
+    const getClassName = (classId?: number) => {
+        if (!classId) return '-';
+        const cls = classes.find(c => c.id === classId);
+        return cls ? cls.className : '-';
+    };
 
     const getRoleBadge = (role: UserRole) => {
         switch (role) {
@@ -61,7 +98,7 @@ const UserManagement: React.FC = () => {
     };
 
     const getStatusBadge = (status: string | undefined) => {
-        return status === 'active' 
+        return status === 'active'
             ? <span className="px-2 py-1 inline-flex text-xs leading-5 font-semibold rounded-full bg-green-100 text-green-800">啟用</span>
             : <span className="px-2 py-1 inline-flex text-xs leading-5 font-semibold rounded-full bg-gray-100 text-gray-800">停用</span>;
     };
@@ -77,7 +114,7 @@ const UserManagement: React.FC = () => {
                 role: user.role,
                 classId: user.classId ? String(user.classId) : '',
                 status: user.status || 'active',
-                password: '' // Don't fill password on edit
+                password: ''
             });
         } else {
             setEditingUser(null);
@@ -104,58 +141,65 @@ const UserManagement: React.FC = () => {
         setFormData(prev => ({ ...prev, [name]: value }));
     };
 
-    const handleSubmit = (e: React.FormEvent) => {
+    const handleSubmit = async (e: React.FormEvent) => {
         e.preventDefault();
-        
+
         if (!formData.username || !formData.fullName) {
             alert("請填寫必填欄位 (使用者名稱、姓名)");
             return;
         }
 
-        if (editingUser) {
-            // Update existing
-            const updatedUsers = users.map(u => u.id === editingUser.id ? {
-                ...u,
-                username: formData.username,
-                fullName: formData.fullName,
-                email: formData.email,
-                role: formData.role,
-                classId: formData.role === UserRole.Teacher && formData.classId ? parseInt(formData.classId) : undefined,
-                status: formData.status
-            } : u);
-            setUsers(updatedUsers);
-            // Update mock data reference if needed (conceptually)
-            const index = mockUsers.findIndex(u => u.id === editingUser.id);
-            if (index !== -1) mockUsers[index] = updatedUsers.find(u => u.id === editingUser.id)!;
-            
-            alert("使用者資料已更新");
-        } else {
-            // Create new
-            const newUser: User = {
-                id: Math.max(0, ...users.map(u => u.id)) + 1,
-                username: formData.username,
-                fullName: formData.fullName,
-                email: formData.email,
-                role: formData.role,
-                classId: formData.role === UserRole.Teacher && formData.classId ? parseInt(formData.classId) : undefined,
-                status: formData.status
-            };
-            const newUsersList = [...users, newUser];
-            setUsers(newUsersList);
-            mockUsers.push(newUser);
-            
-            alert("使用者已新增");
+        setIsSaving(true);
+        try {
+            if (editingUser) {
+                // Update existing
+                await userService.update(editingUser.id, {
+                    username: formData.username,
+                    fullName: formData.fullName,
+                    email: formData.email || undefined,
+                    role: formData.role,
+                    classId: formData.role === UserRole.Teacher && formData.classId ? parseInt(formData.classId) : null,
+                    status: formData.status,
+                    password: formData.password || undefined
+                });
+                alert("使用者資料已更新");
+            } else {
+                // Create new
+                if (!formData.password) {
+                    alert("新使用者必須設定密碼");
+                    setIsSaving(false);
+                    return;
+                }
+                await userService.create({
+                    username: formData.username,
+                    password: formData.password,
+                    fullName: formData.fullName,
+                    email: formData.email || undefined,
+                    role: formData.role,
+                    classId: formData.role === UserRole.Teacher && formData.classId ? parseInt(formData.classId) : undefined,
+                    status: formData.status
+                });
+                alert("使用者已新增");
+            }
+            closeModal();
+            fetchUsers(); // Refresh the list
+        } catch (err: any) {
+            console.error('Failed to save user:', err);
+            alert(err.response?.data?.error || "儲存失敗，請稍後再試");
+        } finally {
+            setIsSaving(false);
         }
-        closeModal();
     };
 
-    const handleDelete = (id: number) => {
-        if (window.confirm("確定要刪除此使用者嗎？此操作無法復原。")) {
-            const updatedUsers = users.filter(u => u.id !== id);
-            setUsers(updatedUsers);
-            
-            const index = mockUsers.findIndex(u => u.id === id);
-            if (index !== -1) mockUsers.splice(index, 1);
+    const handleDelete = async (id: number) => {
+        if (window.confirm("確定要停用此使用者嗎？")) {
+            try {
+                await userService.delete(id);
+                fetchUsers(); // Refresh the list
+            } catch (err) {
+                console.error('Failed to delete user:', err);
+                alert("刪除失敗，請稍後再試");
+            }
         }
     };
 
@@ -192,7 +236,7 @@ const UserManagement: React.FC = () => {
                 </div>
                 <div className="flex items-center space-x-2">
                     <label htmlFor="roleFilter" className="text-sm font-medium text-gray-700 whitespace-nowrap">角色篩選:</label>
-                    <select 
+                    <select
                         id="roleFilter"
                         value={roleFilter}
                         onChange={(e) => setRoleFilter(e.target.value)}
@@ -206,6 +250,13 @@ const UserManagement: React.FC = () => {
                 </div>
             </div>
 
+            {error && (
+                <div className="mb-4 p-4 bg-red-50 text-red-700 rounded-lg">
+                    {error}
+                    <button onClick={fetchUsers} className="ml-4 underline">重試</button>
+                </div>
+            )}
+
             <div className="bg-white shadow-md rounded-lg overflow-hidden">
                 <table className="min-w-full divide-y divide-gray-200">
                     <thead className="bg-gray-50">
@@ -218,8 +269,20 @@ const UserManagement: React.FC = () => {
                         </tr>
                     </thead>
                     <tbody className="bg-white divide-y divide-gray-200">
-                        {filteredUsers.length > 0 ? (
-                            filteredUsers.map((user) => (
+                        {isLoading ? (
+                            <tr>
+                                <td colSpan={5} className="px-6 py-12 text-center text-sm text-gray-500">
+                                    <div className="flex justify-center items-center">
+                                        <svg className="animate-spin h-5 w-5 mr-3 text-church-blue-600" viewBox="0 0 24 24">
+                                            <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4" fill="none" />
+                                            <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z" />
+                                        </svg>
+                                        載入中...
+                                    </div>
+                                </td>
+                            </tr>
+                        ) : users.length > 0 ? (
+                            users.map((user) => (
                                 <tr key={user.id} className="hover:bg-gray-50">
                                     <td className="px-6 py-4 whitespace-nowrap">
                                         <div className="flex items-center">
@@ -237,14 +300,14 @@ const UserManagement: React.FC = () => {
                                         {getRoleBadge(user.role)}
                                     </td>
                                     <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-500">
-                                        {user.classId ? mockClasses.find(c => c.id === user.classId)?.className : '-'}
+                                        {getClassName(user.classId)}
                                     </td>
                                     <td className="px-6 py-4 whitespace-nowrap">
                                         {getStatusBadge(user.status)}
                                     </td>
                                     <td className="px-6 py-4 whitespace-nowrap text-right text-sm font-medium">
                                         <button onClick={() => openModal(user)} className="text-church-blue-600 hover:text-church-blue-900 mr-4">編輯</button>
-                                        <button onClick={() => handleDelete(user.id)} className="text-red-600 hover:text-red-900">刪除</button>
+                                        <button onClick={() => handleDelete(user.id)} className="text-red-600 hover:text-red-900">停用</button>
                                     </td>
                                 </tr>
                             ))
@@ -314,7 +377,7 @@ const UserManagement: React.FC = () => {
                                                         <label htmlFor="classId" className="block text-sm font-medium text-gray-700">關聯班級 (班負責專用)</label>
                                                         <select id="classId" name="classId" value={formData.classId} onChange={handleInputChange} className="mt-1 block w-full py-2 px-3 border border-gray-300 bg-white rounded-md shadow-sm focus:outline-none focus:ring-church-blue-500 focus:border-church-blue-500 sm:text-sm text-gray-900">
                                                             <option value="">無</option>
-                                                            {mockClasses.map(cls => (
+                                                            {classes.map(cls => (
                                                                 <option key={cls.id} value={cls.id}>{cls.className}</option>
                                                             ))}
                                                         </select>
@@ -325,8 +388,8 @@ const UserManagement: React.FC = () => {
                                     </div>
                                 </div>
                                 <div className="bg-gray-50 px-4 py-3 sm:px-6 sm:flex sm:flex-row-reverse">
-                                    <button type="submit" className="w-full inline-flex justify-center rounded-md border border-transparent shadow-sm px-4 py-2 bg-church-blue-600 text-base font-medium text-white hover:bg-church-blue-700 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-church-blue-500 sm:ml-3 sm:w-auto sm:text-sm">
-                                        儲存
+                                    <button type="submit" disabled={isSaving} className="w-full inline-flex justify-center rounded-md border border-transparent shadow-sm px-4 py-2 bg-church-blue-600 text-base font-medium text-white hover:bg-church-blue-700 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-church-blue-500 sm:ml-3 sm:w-auto sm:text-sm disabled:opacity-50">
+                                        {isSaving ? '儲存中...' : '儲存'}
                                     </button>
                                     <button type="button" onClick={closeModal} className="mt-3 w-full inline-flex justify-center rounded-md border border-gray-300 shadow-sm px-4 py-2 bg-white text-base font-medium text-gray-700 hover:bg-gray-50 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-church-blue-500 sm:mt-0 sm:ml-3 sm:w-auto sm:text-sm">
                                         取消
