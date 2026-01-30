@@ -1,5 +1,5 @@
 
-import React, { useState, useEffect, useMemo } from 'react';
+import React, { useState, useEffect, useMemo, useCallback } from 'react';
 import { studentService, classService, sessionService, teacherService, teacherAssignmentService } from '../services';
 import type { TeacherAssignment } from '../services/teacherAssignmentService';
 import { StudentType, AttendanceStatus, Class, Student, ClassSession, Teacher } from '../types';
@@ -119,7 +119,7 @@ const QuarterlyReport: React.FC = () => {
         return [...classes].sort((a, b) => order.indexOf(a.name) - order.indexOf(b.name));
     }, [classes]);
 
-    const generateReport = () => {
+    const generateReport = useCallback(() => {
         setIsLoading(true);
         setReportData(null);
 
@@ -267,13 +267,13 @@ const QuarterlyReport: React.FC = () => {
             setReportData({ enrolled, weeklyData, totals, averages, percentages });
             setIsLoading(false);
         }, 500);
-    };
+    }, [selectedRocYear, selectedQuarter, orderedClasses, teacherAssignments, sessions, students]);
 
     useEffect(() => {
         if (dataLoaded) {
             generateReport();
         }
-    }, [dataLoaded]);
+    }, [dataLoaded, generateReport]);
 
     const yearsToShow = Array.from({ length: 5 }, (_, i) => currentRocYear - i);
 
