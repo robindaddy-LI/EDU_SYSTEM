@@ -159,9 +159,18 @@ const AddNewClassSession: React.FC = () => {
                 });
                 setStudentAttendance(initialStudentAttendance);
 
-                // Fetch teacher assignments for current year
-                const currentYear = new Date().getFullYear().toString();
-                const allAssignments = await teacherAssignmentService.getAll(currentYear);
+                // Fetch teacher assignments for current academic year mechanism
+                // Logic duplicates Settings.tsx/TeacherDetail.tsx - ideally centralize in future
+                const today = new Date();
+                const currentMonth = today.getMonth(); // 0-11
+                const currentYearNum = today.getFullYear();
+                // If month is Sep (8) or later, it's the start of new academic year
+                // If month is Jan-Aug, it belongs to the previous year's academic session
+                const academicYear = (currentMonth >= 8 ? currentYearNum : currentYearNum - 1).toString();
+
+                console.log(`Fetching assignments for Academic Year: ${academicYear}, ClassId: ${numericClassId}`);
+
+                const allAssignments = await teacherAssignmentService.getAll(academicYear);
                 const classAssignments = allAssignments.filter(a => a.classId === numericClassId);
                 const teachers = classAssignments
                     .map(a => a.teacher)
@@ -275,7 +284,7 @@ const AddNewClassSession: React.FC = () => {
                             <div className="relative">
                                 <select id="classId" value={classId} onChange={e => setClassId(e.target.value)} required className={`${formInputClass} appearance-none`}>
                                     <option value="" disabled>請選擇班級...</option>
-                                    {classes.map(cls => <option key={cls.id} value={cls.id}>{cls.name}</option>)}
+                                    {classes.map(cls => <option key={cls.id} value={cls.id}>{cls.className}</option>)}
                                 </select>
                                 <div className="pointer-events-none absolute inset-y-0 right-0 flex items-center px-4 text-gray-500">
                                     <svg className="h-5 w-5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M19 9l-7 7-7-7"></path></svg>

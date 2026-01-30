@@ -179,7 +179,7 @@ const AddNewStudent: React.FC = () => {
                             <label htmlFor="classId" className={formLabelClass}>班級 <span className="text-red-500">*</span></label>
                             <select id="classId" name="classId" value={formData.classId} onChange={handleChange} required className={formInputClass}>
                                 <option value="" disabled>請選擇班級...</option>
-                                {classes.map(cls => <option key={cls.id} value={cls.id}>{cls.name}</option>)}
+                                {classes.map(cls => <option key={cls.id} value={cls.id}>{cls.className}</option>)}
                             </select>
                         </div>
                         <div>
@@ -281,7 +281,7 @@ const AddNewStudent: React.FC = () => {
                                         <label htmlFor={`className-${index}`} className={formLabelClass}>教會班級</label>
                                         <select id={`className-${index}`} name="className" value={record.className} onChange={(e) => handleEnrollmentChange(index, e)} className={formInputClass}>
                                             <option value="" disabled>請選擇班級...</option>
-                                            {classes.map(cls => <option key={cls.id} value={cls.name}>{cls.name}</option>)}
+                                            {classes.map(cls => <option key={cls.id} value={cls.className}>{cls.className}</option>)}
                                         </select>
                                     </div>
                                     <div className="md:col-span-1">

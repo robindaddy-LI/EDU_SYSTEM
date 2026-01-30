@@ -1,11 +1,12 @@
 
 import React, { useState, useEffect, useMemo, useRef } from 'react';
-import { mockStudents, mockClasses, mockOperationLogs, mockTeachers, mockTeacherClassMap } from '../data/mockData';
 import { TeacherType, Teacher, Student, StudentType, EnrollmentHistory, HistoricalAttendance, Class } from '../types';
 import studentService from '../services/studentService';
 import teacherAssignmentService from '../services/teacherAssignmentService';
 import classService from '../services/classService';
 import operationLogService from '../services/operationLogService';
+import teacherService from '../services/teacherService';
+import { useAuth } from '../AuthContext';
 // Import XLSX from CDN
 import * as XLSX from 'https://cdn.sheetjs.com/xlsx-0.20.3/package/xlsx.mjs';
 
@@ -128,11 +129,15 @@ const mapClassName = (header: string): string => {
 };
 
 const Settings: React.FC = () => {
-    const [promotionResult, setPromotionResult] = useState<{ updated: number; skipped: number } | null>(null);
+    const { currentUser } = useAuth();
+    const [promotionResult, setPromotionResult] = useState<{ updated: number; skipped: number; graduated?: number } | null>(null);
     const [isPromoting, setIsPromoting] = useState(false);
 
     // Classes State
-    const [classes, setClasses] = useState<Class[]>(mockClasses);
+    const [classes, setClasses] = useState<Class[]>([]);
+
+    // Teachers State
+    const [teachers, setTeachers] = useState<Teacher[]>([]);
 
     // State for teacher assignments
     const currentGregorianYear = getCurrentAcademicYear();
@@ -152,10 +157,21 @@ const Settings: React.FC = () => {
     const [isAutoMerging, setIsAutoMerging] = useState(false);
     const [cleanupResult, setCleanupResult] = useState<string | null>(null);
 
-    const activeTeachers = useMemo(() => mockTeachers.filter(t => t.status === 'active'), []);
+    const activeTeachers = useMemo(() => teachers.filter(t => t.status === 'active'), [teachers]);
     const formalActiveTeachers = useMemo(() => activeTeachers.filter(t => t.teacherType === TeacherType.Formal), [activeTeachers]);
 
-
+    // Load Teachers
+    useEffect(() => {
+        const loadTeachers = async () => {
+            try {
+                const data = await teacherService.getAll();
+                setTeachers(data);
+            } catch (error) {
+                console.error('Failed to load teachers', error);
+            }
+        };
+        loadTeachers();
+    }, []);
 
     // Load Classes
     useEffect(() => {
@@ -175,11 +191,11 @@ const Settings: React.FC = () => {
 
     useEffect(() => {
         const loadAssignments = async () => {
+            if (classes.length === 0) return; // Wait for classes to load
+
             try {
                 const apiAssignments = await teacherAssignmentService.getAll(selectedYear);
                 const newAssignments: ClassAssignmentState = {};
-
-
 
                 classes.forEach(cls => {
                     const classAssignments = apiAssignments.filter(a => a.classId === cls.id);
@@ -206,7 +222,7 @@ const Settings: React.FC = () => {
         };
 
         loadAssignments();
-    }, [selectedYear]);
+    }, [selectedYear, classes]);
 
 
     const getTargetClassId = (dob: string | undefined, academicYear: number): number | null | -1 => {
@@ -305,7 +321,7 @@ const Settings: React.FC = () => {
                 await operationLogService.create({
                     type: '學年升班',
                     description: `執行 ${rocYear} 學年度升班作業。成功更新 ${updatedCount} 位學員，自動離校 ${graduatedCount} 位，跳過 ${skippedCount} 位。`,
-                    userId: 1, // TODO: Get from auth context
+                    userId: currentUser?.id || 1,
                     metadata: { rocYear, updatedCount, graduatedCount, skippedCount }
                 });
 
@@ -378,9 +394,15 @@ const Settings: React.FC = () => {
 
             const rocYear = gregorianToRoc(parseInt(selectedYear, 10));
             setAssignmentSaveResult(`${rocYear} 學年度教員設定已成功儲存！`);
-        } catch (error) {
+        } catch (error: any) {
             console.error('Failed to save teacher assignments:', error);
-            setAssignmentSaveResult('儲存失敗，請檢查網路連線或聯絡系統管理員。');
+            const responseData = error.response?.data;
+            const errorMessage = responseData?.error || error.message || '儲存失敗';
+            const details = responseData?.details ? ` (${responseData.details})` : '';
+            const code = responseData?.code ? ` [Code: ${responseData.code}]` : '';
+            const meta = responseData?.meta ? ` Meta: ${JSON.stringify(responseData.meta)}` : '';
+
+            setAssignmentSaveResult(`❌ ${errorMessage}${code}${details}${meta}`);
         } finally {
             setIsSavingAssignments(false);
         }
@@ -601,7 +623,7 @@ const Settings: React.FC = () => {
                 await operationLogService.create({
                     type: '資料匯入',
                     description: `從 Excel/CSV 匯入處理完成。建立: ${result.created}, 合併: ${result.merged}, 錯誤: ${result.errors}`,
-                    userId: 1, // TODO: Get from auth context
+                    userId: currentUser?.id || 1,
                     metadata: { ...result }
                 });
 
@@ -847,12 +869,16 @@ const Settings: React.FC = () => {
                                     <label className="block text-xs font-bold text-gray-500 uppercase tracking-wider mb-2">班級教員</label>
                                     <div className="mt-1 space-y-2 max-h-40 overflow-y-auto border border-gray-200 p-3 rounded-xl bg-white custom-scrollbar">
                                         {activeTeachers.map(t => {
-                                            const isLead = parseInt(assignments[cls.id]?.leadTeacherId, 10) === t.id;
+                                            const assignment = assignments[cls.id];
+                                            // Safety check: if assignment is undefined, use default
+                                            const teacherIds = assignment?.teacherIds || [];
+                                            const isLead = parseInt(assignment?.leadTeacherId || '0', 10) === t.id;
+
                                             return (
                                                 <label key={t.id} className={`flex items-center p-2 rounded-lg hover:bg-gray-50 cursor-pointer ${isLead ? 'opacity-50 pointer-events-none' : ''}`}>
                                                     <input
                                                         type="checkbox"
-                                                        checked={assignments[cls.id]?.teacherIds.includes(t.id)}
+                                                        checked={teacherIds.includes(t.id)}
                                                         onChange={() => handleTeacherToggle(cls.id, t.id)}
                                                         disabled={isLead}
                                                         className="h-4 w-4 rounded border-gray-300 text-church-blue-600 focus:ring-church-blue-500 bg-white"

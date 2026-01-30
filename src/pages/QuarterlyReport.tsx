@@ -116,7 +116,7 @@ const QuarterlyReport: React.FC = () => {
 
     const orderedClasses = useMemo(() => {
         const order = ['幼兒班', '幼年班', '少年班', '國中班', '高中班'];
-        return [...classes].sort((a, b) => order.indexOf(a.name) - order.indexOf(b.name));
+        return [...classes].sort((a, b) => order.indexOf(a.className) - order.indexOf(b.className));
     }, [classes]);
 
     const generateReport = useCallback(() => {
@@ -348,7 +348,7 @@ const QuarterlyReport: React.FC = () => {
                             <tr className="border border-black">
                                 <th rowSpan={2} colSpan={3} className="border border-black p-1">班別</th>
                                 {orderedClasses.map(cls => (
-                                    <th key={cls.id} colSpan={5} className="border border-black p-1">{cls.name}</th>
+                                    <th key={cls.id} colSpan={5} className="border border-black p-1">{cls.className}</th>
                                 ))}
                             </tr>
                             <tr className="border border-black">

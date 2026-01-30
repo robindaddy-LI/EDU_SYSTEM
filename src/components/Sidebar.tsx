@@ -3,7 +3,7 @@ import React, { useMemo } from 'react';
 import { NavLink, useNavigate } from 'react-router-dom';
 import { UserRole } from '../types';
 import { useAuth } from '../AuthContext';
-import { mockUsers } from '../data/mockData';
+
 
 interface SidebarProps {
     isOpen: boolean;
@@ -25,6 +25,7 @@ const allNavItems = [
 const Sidebar: React.FC<SidebarProps> = ({ isOpen, onClose }) => {
     const { currentUser, setCurrentUser } = useAuth();
     const navigate = useNavigate();
+    const [availableUsers, setAvailableUsers] = React.useState<{ [key in UserRole]?: import('../types').User }>({});
 
     const baseLinkClass = "flex items-center px-6 py-3 mx-3 my-1 rounded-3xl transition-all duration-300 font-bold text-gray-500 hover:bg-white/80 hover:shadow-sm hover:text-cute-primary hover:translate-x-1";
     const activeLinkClass = "bg-white shadow-cute text-cute-primary ring-2 ring-white ring-opacity-50";
@@ -33,18 +34,35 @@ const Sidebar: React.FC<SidebarProps> = ({ isOpen, onClose }) => {
         return allNavItems.filter(item => item.roles.includes(currentUser.role));
     }, [currentUser.role]);
 
-    // Find representative users for dropdown based on mockData
-    const adminUser = mockUsers.find(u => u.role === UserRole.Admin);
-    const teacherUser = mockUsers.find(u => u.role === UserRole.Teacher);
-    const recorderUser = mockUsers.find(u => u.role === UserRole.Recorder);
+    // Fetch representative users for dropdown
+    React.useEffect(() => {
+        const loadUsers = async () => {
+            try {
+                const users = await import('../services').then(m => m.userService.getAll());
+                const admin = users.find(u => u.role === UserRole.Admin);
+                const teacher = users.find(u => u.role === UserRole.Teacher && u.classId); // Prefer teacher with class
+                const recorder = users.find(u => u.role === UserRole.Recorder);
+
+                setAvailableUsers({
+                    [UserRole.Admin]: admin,
+                    [UserRole.Teacher]: teacher,
+                    [UserRole.Recorder]: recorder
+                });
+            } catch (error) {
+                console.error('Failed to load users for switcher:', error);
+            }
+        };
+        loadUsers();
+    }, []);
+
+    const adminUser = availableUsers[UserRole.Admin];
+    const teacherUser = availableUsers[UserRole.Teacher];
+    const recorderUser = availableUsers[UserRole.Recorder];
 
     const handleUserChange = (e: React.ChangeEvent<HTMLSelectElement>) => {
         const role = e.target.value as UserRole;
-        let newUser;
-        if (role === UserRole.Admin) newUser = adminUser;
-        else if (role === UserRole.Teacher) newUser = teacherUser;
-        else newUser = recorderUser;
-        
+        const newUser = availableUsers[role];
+
         if (newUser) {
             setCurrentUser(newUser);
             if (newUser.role === UserRole.Recorder) {
@@ -83,12 +101,12 @@ const Sidebar: React.FC<SidebarProps> = ({ isOpen, onClose }) => {
                     </svg>
                 </button>
             </div>
-            
+
             <div className="px-6 py-4">
                 <div className="bg-white/50 p-1 rounded-2xl border border-white/60">
                     <label className="block text-[10px] font-bold text-gray-400 mb-1 px-2 uppercase tracking-wider">使用者視角 (演示模式)</label>
                     <div className="relative">
-                        <select 
+                        <select
                             value={currentUser.role}
                             onChange={handleUserChange}
                             className="w-full appearance-none bg-white text-gray-600 text-sm font-bold rounded-xl px-4 py-2 border-none shadow-sm focus:ring-2 focus:ring-cute-primary cursor-pointer"
@@ -123,8 +141,8 @@ const Sidebar: React.FC<SidebarProps> = ({ isOpen, onClose }) => {
                     </NavLink>
                 ))}
             </nav>
-            
-             <div className="p-6">
+
+            <div className="p-6">
                 <div className="bg-gradient-to-br from-white/80 to-white/40 backdrop-blur-sm rounded-3xl p-4 shadow-sm border border-white">
                     <div className="flex items-center">
                         <div className="h-10 w-10 rounded-full bg-cute-secondary/20 flex items-center justify-center text-cute-secondary font-bold text-lg mr-3 border-2 border-white">

@@ -115,6 +115,20 @@ export const TeacherAssignmentController = {
                 where: { academicYear }
             });
 
+            // HACK: Reset sequence to prevent P2002 (Unique ID) error
+            // This happens when seed data or manual inserts mess up the Postgres auto-increment sequence
+            try {
+                await prisma.$executeRawUnsafe(`
+                    SELECT setval(
+                        pg_get_serial_sequence('teacher_class_assignments', 'id'), 
+                        COALESCE((SELECT MAX(id) + 1 FROM teacher_class_assignments), 1), 
+                        false
+                    );
+                `);
+            } catch (seqError) {
+                console.warn('Failed to reset sequence, ignoring:', seqError);
+            }
+
             // Create new assignments
             const created = await prisma.teacherClassAssignment.createMany({
                 data: assignments.map((a: any) => ({
@@ -130,9 +144,14 @@ export const TeacherAssignmentController = {
                 count: created.count,
                 message: `Successfully saved ${created.count} assignments for ${academicYear}`
             });
-        } catch (error) {
+        } catch (error: any) {
             console.error(error);
-            res.status(500).json({ error: 'Failed to batch upsert assignments' });
+            res.status(500).json({
+                error: 'Failed to batch upsert assignments',
+                details: error.message,
+                code: error.code,
+                meta: error.meta
+            });
         }
     },
 

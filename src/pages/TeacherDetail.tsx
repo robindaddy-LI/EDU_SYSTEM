@@ -1,7 +1,8 @@
 import React, { useState, useEffect } from 'react';
 import { useParams, Link, useNavigate } from 'react-router-dom';
 import { Teacher, TeacherType, Class } from '../types';
-import { mockTeachers, mockClasses, mockTeacherClassMap } from '../data/mockData';
+import { teacherService } from '../services/teacherService';
+import { teacherAssignmentService } from '../services/teacherAssignmentService';
 
 interface AssignedClassInfo extends Class {
     mainTeacher?: string;
@@ -25,57 +26,83 @@ const TeacherDetail: React.FC = () => {
     const [teacher, setTeacher] = useState<Teacher | undefined>(undefined);
     const [assignmentsByYear, setAssignmentsByYear] = useState<Record<string, AssignedClassInfo[]>>({});
     const [isLoading, setIsLoading] = useState(true);
-    
+
     useEffect(() => {
-        const teacherId = id ? parseInt(id, 10) : NaN;
-        const foundTeacher = mockTeachers.find(t => t.id === teacherId);
+        const fetchTeacherData = async () => {
+            if (!id) return;
+            setIsLoading(true);
+            try {
+                const teacherId = parseInt(id, 10);
 
-        setTeacher(foundTeacher);
+                // Fetch teacher and all assignments in parallel
+                const [teacherData, allAssignments] = await Promise.all([
+                    teacherService.getById(teacherId),
+                    teacherAssignmentService.getAll() // Assuming this returns all history
+                ]);
 
-        if (foundTeacher) {
-            const allAssignments = mockTeacherClassMap.filter(mapping => mapping.teacherId === foundTeacher.id);
-            const groupedAssignments: Record<string, AssignedClassInfo[]> = {};
+                setTeacher(teacherData);
 
-            allAssignments.forEach(mapping => {
-                const year = mapping.academicYear;
-                if (!groupedAssignments[year]) {
-                    groupedAssignments[year] = [];
+                if (teacherData) {
+                    const myAssignments = allAssignments.filter(a => a.teacherId === teacherId);
+                    const groupedAssignments: Record<string, AssignedClassInfo[]> = {};
+
+                    // Sort assignments by year descending for better UI interaction logic if needed later
+                    // But here we just group them.
+
+                    myAssignments.forEach(assignment => {
+                        const year = assignment.academicYear;
+                        if (!groupedAssignments[year]) {
+                            groupedAssignments[year] = [];
+                        }
+
+                        // Extract class info. 
+                        // Note: The API returns class object inside assignment.
+                        // We need to map it to AssignedClassInfo structure.
+                        // Check naming: API usually returns `name` for class name, frontend uses `className`.
+                        if (assignment.class) {
+                            // Find the lead teacher for this class in this year
+                            const leadAssignment = allAssignments.find(a =>
+                                a.classId === assignment.classId &&
+                                a.academicYear === year &&
+                                a.isLead
+                            );
+
+                            const mainTeacherName = leadAssignment?.teacher?.fullName;
+
+                            // Prevent duplicates
+                            if (!groupedAssignments[year].some(c => c.id === assignment.classId)) {
+                                groupedAssignments[year].push({
+                                    id: assignment.classId,
+                                    className: assignment.class.name, // Mapping backend 'name' to frontend 'className'
+                                    mainTeacher: mainTeacherName
+                                } as AssignedClassInfo);
+                            }
+                        }
+                    });
+
+                    setAssignmentsByYear(groupedAssignments);
                 }
+            } catch (err) {
+                console.error("Failed to load teacher detail:", err);
+            } finally {
+                setIsLoading(false);
+            }
+        };
 
-                const classInfo = mockClasses.find(cls => cls.id === mapping.classId);
-                if (classInfo) {
-                    const mainTeacherMapping = mockTeacherClassMap.find(
-                        m => m.classId === classInfo.id && m.isLead === true && m.academicYear === year
-                    );
-                    const mainTeacher = mainTeacherMapping 
-                        ? mockTeachers.find(t => t.id === mainTeacherMapping.teacherId) 
-                        : undefined;
-                    
-                    // Avoid adding duplicate classes if a teacher has multiple roles in the same class
-                    if (!groupedAssignments[year].some(c => c.id === classInfo.id)) {
-                         groupedAssignments[year].push({
-                            ...classInfo,
-                            mainTeacher: mainTeacher?.fullName,
-                        });
-                    }
-                }
-            });
-
-            setAssignmentsByYear(groupedAssignments);
-        }
-
-        setIsLoading(false);
+        fetchTeacherData();
     }, [id]);
 
-    const handleDelete = () => {
+    const handleDelete = async () => {
         if (!teacher) return;
         const confirmation = window.confirm(`您確定要刪除教員「${teacher.fullName}」嗎？此操作無法復原。`);
         if (confirmation) {
-            const index = mockTeachers.findIndex(t => t.id === teacher.id);
-            if (index > -1) {
-                mockTeachers.splice(index, 1);
+            try {
+                await teacherService.delete(teacher.id);
                 alert('教員已成功刪除。');
                 navigate('/teachers');
+            } catch (err) {
+                console.error("Delete failed:", err);
+                alert('刪除失敗，請稍後再試。');
             }
         }
     };
@@ -87,14 +114,14 @@ const TeacherDetail: React.FC = () => {
             default: return '未知';
         }
     };
-    
+
     const renderDetailItem = (label: string, value?: string | null) => (
         <div>
             <dt className="text-sm font-medium text-gray-500">{label}</dt>
             <dd className="mt-1 text-base text-gray-900">{value || '未提供'}</dd>
         </div>
     );
-    
+
     const renderStatusItem = (label: string, value: 'active' | 'inactive') => (
         <div>
             <dt className="text-sm font-medium text-gray-500">{label}</dt>
@@ -121,7 +148,7 @@ const TeacherDetail: React.FC = () => {
             </div>
         );
     }
-    
+
     const sortedYears = Object.keys(assignmentsByYear).sort((a, b) => parseInt(b) - parseInt(a));
 
     return (
@@ -143,7 +170,7 @@ const TeacherDetail: React.FC = () => {
                         className="bg-red-600 text-white px-4 py-2 rounded-lg hover:bg-red-700 transition-colors duration-200 flex items-center"
                     >
                         <svg xmlns="http://www.w3.org/2000/svg" className="h-5 w-5 mr-2" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-                           <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16" />
+                            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16" />
                         </svg>
                         刪除教員
                     </button>
@@ -175,7 +202,7 @@ const TeacherDetail: React.FC = () => {
                         {renderDetailItem('電子郵件', teacher.email)}
                     </dl>
                 </div>
-                
+
                 {/* Assigned Classes History */}
                 <div className="p-6 sm:p-8">
                     <h2 className="text-xl font-semibold text-gray-700 mb-4">歷年負責班級</h2>
@@ -189,7 +216,7 @@ const TeacherDetail: React.FC = () => {
                                     <ul className="space-y-3">
                                         {assignmentsByYear[year].map(cls => (
                                             <li key={cls.id} className="p-3 bg-gray-50 rounded-md flex items-center">
-                                                 <svg xmlns="http://www.w3.org/2000/svg" className="h-6 w-6 mr-3 text-church-blue-500" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M17 20h5v-2a3 3 0 00-5.356-1.857M17 20H7m10 0v-2c0-.656-.126-1.283-.356-1.857M7 20H2v-2a3 3 0 015.356-1.857M7 20v-2c0-.656.126-1.283.356-1.857m0 0a3.002 3.002 0 01-3.71-1.29l-1.123-1.945A3 3 0 012 8.324V6c0-1.105.895-2 2-2h12c1.105 0 2 .895 2 2v2.324a3 3 0 01-1.88 2.775l-1.123 1.945a3.002 3.002 0 01-3.71 1.29m-3.71-1.29a3.002 3.002 0 01-3.142 0" /></svg>
+                                                <svg xmlns="http://www.w3.org/2000/svg" className="h-6 w-6 mr-3 text-church-blue-500" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M17 20h5v-2a3 3 0 00-5.356-1.857M17 20H7m10 0v-2c0-.656-.126-1.283-.356-1.857M7 20H2v-2a3 3 0 015.356-1.857M7 20v-2c0-.656.126-1.283.356-1.857m0 0a3.002 3.002 0 01-3.71-1.29l-1.123-1.945A3 3 0 012 8.324V6c0-1.105.895-2 2-2h12c1.105 0 2 .895 2 2v2.324a3 3 0 01-1.88 2.775l-1.123 1.945a3.002 3.002 0 01-3.71 1.29m-3.71-1.29a3.002 3.002 0 01-3.142 0" /></svg>
                                                 <div>
                                                     <span className="font-medium text-gray-800">{cls.className}</span>
                                                     {cls.mainTeacher && (
@@ -210,7 +237,7 @@ const TeacherDetail: React.FC = () => {
 
                 {/* Notes */}
                 {teacher.notes && (
-                     <div className="p-6 sm:p-8">
+                    <div className="p-6 sm:p-8">
                         <h2 className="text-xl font-semibold text-gray-700 mb-2">備註</h2>
                         <p className="text-base text-gray-800 whitespace-pre-wrap bg-gray-50 p-4 rounded-md">{teacher.notes}</p>
                     </div>

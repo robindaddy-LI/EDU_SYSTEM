@@ -16,7 +16,7 @@ export default defineConfig({
     proxy: {
       // 當在開發環境呼叫 /api 時，轉發到本機的後端測試伺服器
       '/api': {
-        target: 'http://localhost:3000',
+        target: 'http://127.0.0.1:3000',
         changeOrigin: true
         // No rewrite - backend expects /api/v1 prefix
       }
