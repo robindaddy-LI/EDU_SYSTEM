@@ -2,7 +2,7 @@
 import React, { useState, useEffect, useMemo, useCallback } from 'react';
 import { Link, useParams, useNavigate } from 'react-router-dom';
 import { Class, ClassSession, Teacher, Student, AttendanceStatus } from '../types';
-import { sessionService, classService } from '../services';
+import { sessionService, classService, studentService, teacherAssignmentService } from '../services';
 import { useAuth } from '../AuthContext';
 
 interface LogbookData {
@@ -115,6 +115,10 @@ const ClassSessionDetailView: React.FC<{ sessionId: string }> = ({ sessionId }) 
     const [isEditing, setIsEditing] = useState<boolean>(false);
     const [editableSession, setEditableSession] = useState<ClassSession | null>(null);
 
+    // Class roster for attendance
+    const [classStudents, setClassStudents] = useState<Student[]>([]);
+    const [classTeachers, setClassTeachers] = useState<Teacher[]>([]);
+
     const [editableStudentAttendance, setEditableStudentAttendance] = useState<Record<number, AttendanceEditState>>({});
     const [editableTeacherAttendance, setEditableTeacherAttendance] = useState<Record<number, AttendanceEditState>>({});
 
@@ -165,29 +169,84 @@ const ClassSessionDetailView: React.FC<{ sessionId: string }> = ({ sessionId }) 
         }
     }, [sessionId, isAdmin, userClassId, navigate]);
 
+    const fetchClassRoster = useCallback(async (classId: number) => {
+        try {
+            // Fetch all active students in the class
+            const students = await studentService.getAll({ classId, status: 'active' });
+            setClassStudents(students);
+
+            // Fetch teacher assignments for current year (using 2024 as default)
+            const currentYear = new Date().getFullYear().toString();
+            const allAssignments = await teacherAssignmentService.getAll(currentYear);
+
+            // Filter assignments for this class and extract teachers
+            const classAssignments = allAssignments.filter(a => a.classId === classId);
+            const teachers = classAssignments
+                .map(a => a.teacher)
+                .filter((t): t is Teacher => t !== undefined) as Teacher[];
+
+            setClassTeachers(teachers);
+        } catch (err) {
+            console.error('Failed to fetch class roster:', err);
+            // Don't set error state, just log - this is not critical
+        }
+    }, []);
+
     useEffect(() => {
         fetchSession();
     }, [fetchSession]);
 
-    const handleEditClick = () => {
+    const handleEditClick = async () => {
         if (logbookData) {
             setEditableSession({ ...logbookData.session });
 
-            const sAttendance: Record<number, AttendanceEditState> = {};
-            logbookData.studentAttendance.forEach(r => {
-                sAttendance[r.student.id] = { status: r.status, reason: r.reason || '' };
-            });
-            setEditableStudentAttendance(sAttendance);
-
-            const tAttendance: Record<number, AttendanceEditState> = {};
-            logbookData.attendingTeachers.forEach(r => {
-                tAttendance[r.teacher.id] = { status: r.status, reason: r.reason || '' };
-            });
-            setEditableTeacherAttendance(tAttendance);
+            // Fetch the full class roster first
+            await fetchClassRoster(logbookData.session.classId);
 
             setIsEditing(true);
         }
     };
+
+    // Initialize attendance state when class roster is loaded
+    useEffect(() => {
+        if (isEditing && classStudents.length > 0) {
+            const sAttendance: Record<number, AttendanceEditState> = {};
+
+            // Initialize all students with default Present status
+            classStudents.forEach(student => {
+                sAttendance[student.id] = { status: AttendanceStatus.Present, reason: '' };
+            });
+
+            // Override with existing attendance records
+            if (logbookData) {
+                logbookData.studentAttendance.forEach(r => {
+                    sAttendance[r.student.id] = { status: r.status, reason: r.reason || '' };
+                });
+            }
+
+            setEditableStudentAttendance(sAttendance);
+        }
+    }, [isEditing, classStudents, logbookData]);
+
+    useEffect(() => {
+        if (isEditing && classTeachers.length > 0) {
+            const tAttendance: Record<number, AttendanceEditState> = {};
+
+            // Initialize all teachers with default Present status
+            classTeachers.forEach(teacher => {
+                tAttendance[teacher.id] = { status: AttendanceStatus.Present, reason: '' };
+            });
+
+            // Override with existing attendance records
+            if (logbookData) {
+                logbookData.attendingTeachers.forEach(r => {
+                    tAttendance[r.teacher.id] = { status: r.status, reason: r.reason || '' };
+                });
+            }
+
+            setEditableTeacherAttendance(tAttendance);
+        }
+    }, [isEditing, classTeachers, logbookData]);
 
     const handleCancelClick = () => {
         setIsEditing(false);
@@ -370,7 +429,7 @@ const ClassSessionDetailView: React.FC<{ sessionId: string }> = ({ sessionId }) 
                                         <div><label htmlFor="worshipTeacherName" className="block text-sm font-bold text-gray-600 mb-1">崇拜課程老師</label><input type="text" id="worshipTeacherName" name="worshipTeacherName" list="teacher-list" value={editableSession.worshipTeacherName || ''} onChange={handleInputChange} className={formInputClass} /></div>
                                         <div><label htmlFor="activityTopic" className="block text-sm font-bold text-gray-600 mb-1">共習課程主題</label><input type="text" id="activityTopic" name="activityTopic" value={editableSession.activityTopic || ''} onChange={handleInputChange} className={formInputClass} /></div>
                                         <div><label htmlFor="activityTeacherName" className="block text-sm font-bold text-gray-600 mb-1">共習課程老師</label><input type="text" id="activityTeacherName" name="activityTeacherName" list="teacher-list" value={editableSession.activityTeacherName || ''} onChange={handleInputChange} className={formInputClass} /></div>
-                                        <datalist id="teacher-list">{attendingTeachers.map(({ teacher }) => (<option key={teacher.id} value={teacher.fullName} />))}</datalist>
+                                        <datalist id="teacher-list">{classTeachers.map((teacher) => (<option key={teacher.id} value={teacher.fullName} />))}</datalist>
                                     </>
                                 ) : (!session.isCancelled &&
                                     <>
@@ -392,7 +451,7 @@ const ClassSessionDetailView: React.FC<{ sessionId: string }> = ({ sessionId }) 
                                     </h3>
                                     {isEditing ? (
                                         <div className="space-y-2">
-                                            {attendingTeachers.map(({ teacher }) => (
+                                            {classTeachers.map((teacher) => (
                                                 <AttendanceEditRow key={teacher.id} label={teacher.fullName} state={editableTeacherAttendance[teacher.id] || { status: AttendanceStatus.Present, reason: '' }} onChange={(field, value) => handleTeacherAttendanceChange(teacher.id, field, value)} />
                                             ))}
                                         </div>
@@ -407,7 +466,7 @@ const ClassSessionDetailView: React.FC<{ sessionId: string }> = ({ sessionId }) 
                                     </h3>
                                     {isEditing ? (
                                         <div className="space-y-2 max-h-96 overflow-y-auto pr-2 custom-scrollbar">
-                                            {studentAttendance.map(({ student }) => (
+                                            {classStudents.map((student) => (
                                                 <AttendanceEditRow key={student.id} label={student.fullName} state={editableStudentAttendance[student.id] || { status: AttendanceStatus.Present, reason: '' }} onChange={(field, value) => handleStudentAttendanceChange(student.id, field, value)} />
                                             ))}
                                         </div>
@@ -531,7 +590,7 @@ const ClassLogbookListView: React.FC<{ classId: string }> = ({ classId }) => {
                     {isAdmin && <Link to="/class-logbook" className="text-xs font-bold text-gray-400 hover:text-cute-primary mb-1 block transition-colors">&larr; 返回總覽</Link>}
                     <h1 className="text-3xl font-black text-gray-800">{className} 紀錄列表</h1>
                 </div>
-                <Link to="/class-logbook/new" className="bg-cute-primary text-white px-6 py-3 rounded-full hover:bg-blue-500 shadow-cute hover:shadow-cute-hover hover:-translate-y-1 transition-all duration-300 font-bold flex items-center">
+                <Link to={`/class-logbook/new?classId=${numericClassId}`} className="bg-cute-primary text-white px-6 py-3 rounded-full hover:bg-blue-500 shadow-cute hover:shadow-cute-hover hover:-translate-y-1 transition-all duration-300 font-bold flex items-center">
                     <svg xmlns="http://www.w3.org/2000/svg" className="h-5 w-5 mr-2" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2.5} d="M12 6v6m0 0v6m0-6h6m-6 0H6" /></svg>
                     新增紀錄
                 </Link>

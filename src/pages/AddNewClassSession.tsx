@@ -1,8 +1,8 @@
 
 import React, { useState, useEffect } from 'react';
-import { useNavigate } from 'react-router-dom';
+import { useNavigate, useSearchParams } from 'react-router-dom';
 import { Class, Student, Teacher, AttendanceStatus } from '../types';
-import { mockClasses, mockStudents, mockTeachers, mockTeacherClassMap, mockClassSessions, mockStudentAttendanceRecords, mockTeacherAttendanceRecords } from '../data/mockData';
+import { classService, studentService, teacherAssignmentService, sessionService } from '../services';
 
 const getUpcomingSaturday = (): string => {
     const today = new Date();
@@ -19,36 +19,36 @@ interface AttendanceState {
 }
 
 // Defined outside to maintain focus
-const AttendanceRow: React.FC<{ 
-    label: string, 
-    state: AttendanceState, 
-    onChange: (field: keyof AttendanceState, value: string) => void, 
-    disabled: boolean 
+const AttendanceRow: React.FC<{
+    label: string,
+    state: AttendanceState,
+    onChange: (field: keyof AttendanceState, value: string) => void,
+    disabled: boolean
 }> = ({ label, state, onChange, disabled }) => {
     const buttons = [
-        { 
-            value: AttendanceStatus.Present, 
-            label: '出席', 
-            activeClass: 'bg-gradient-to-b from-green-400 to-green-500 text-white shadow-green-200 shadow-lg transform scale-110', 
-            baseClass: 'hover:bg-green-50 text-green-600 border-green-200' 
+        {
+            value: AttendanceStatus.Present,
+            label: '出席',
+            activeClass: 'bg-gradient-to-b from-green-400 to-green-500 text-white shadow-green-200 shadow-lg transform scale-110',
+            baseClass: 'hover:bg-green-50 text-green-600 border-green-200'
         },
-        { 
-            value: AttendanceStatus.Late, 
-            label: '遲到', 
-            activeClass: 'bg-gradient-to-b from-yellow-300 to-yellow-400 text-yellow-900 shadow-yellow-200 shadow-lg transform scale-110', 
-            baseClass: 'hover:bg-yellow-50 text-yellow-600 border-yellow-200' 
+        {
+            value: AttendanceStatus.Late,
+            label: '遲到',
+            activeClass: 'bg-gradient-to-b from-yellow-300 to-yellow-400 text-yellow-900 shadow-yellow-200 shadow-lg transform scale-110',
+            baseClass: 'hover:bg-yellow-50 text-yellow-600 border-yellow-200'
         },
-        { 
-            value: AttendanceStatus.Excused, 
-            label: '請假', 
-            activeClass: 'bg-gradient-to-b from-blue-400 to-blue-500 text-white shadow-blue-200 shadow-lg transform scale-110', 
-            baseClass: 'hover:bg-blue-50 text-blue-600 border-blue-200' 
+        {
+            value: AttendanceStatus.Excused,
+            label: '請假',
+            activeClass: 'bg-gradient-to-b from-blue-400 to-blue-500 text-white shadow-blue-200 shadow-lg transform scale-110',
+            baseClass: 'hover:bg-blue-50 text-blue-600 border-blue-200'
         },
-        { 
-            value: AttendanceStatus.Absent, 
-            label: '缺席', 
-            activeClass: 'bg-gradient-to-b from-red-400 to-red-500 text-white shadow-red-200 shadow-lg transform scale-110', 
-            baseClass: 'hover:bg-red-50 text-red-600 border-red-200' 
+        {
+            value: AttendanceStatus.Absent,
+            label: '缺席',
+            activeClass: 'bg-gradient-to-b from-red-400 to-red-500 text-white shadow-red-200 shadow-lg transform scale-110',
+            baseClass: 'hover:bg-red-50 text-red-600 border-red-200'
         },
     ];
 
@@ -63,11 +63,10 @@ const AttendanceRow: React.FC<{
                             type="button"
                             disabled={disabled}
                             onClick={() => onChange('status', btn.value)}
-                            className={`w-10 h-10 rounded-full flex items-center justify-center text-xs font-bold transition-all duration-200 shadow-sm border ${
-                                state.status === btn.value
-                                    ? `${btn.activeClass} border-transparent z-10`
-                                    : `bg-white ${btn.baseClass}`
-                            } ${disabled ? 'opacity-50 cursor-not-allowed' : 'cursor-pointer active:scale-95'}`}
+                            className={`w-10 h-10 rounded-full flex items-center justify-center text-xs font-bold transition-all duration-200 shadow-sm border ${state.status === btn.value
+                                ? `${btn.activeClass} border-transparent z-10`
+                                : `bg-white ${btn.baseClass}`
+                                } ${disabled ? 'opacity-50 cursor-not-allowed' : 'cursor-pointer active:scale-95'}`}
                             title={btn.label}
                         >
                             {btn.label.substring(0, 2)}
@@ -75,8 +74,8 @@ const AttendanceRow: React.FC<{
                     ))}
                 </div>
                 <div className="flex-grow min-w-[120px]">
-                    <input 
-                        type="text" 
+                    <input
+                        type="text"
                         placeholder={state.status === AttendanceStatus.Present ? "出席" : "輸入原因..."}
                         value={state.reason}
                         onChange={e => onChange('reason', e.target.value)}
@@ -91,9 +90,10 @@ const AttendanceRow: React.FC<{
 
 const AddNewClassSession: React.FC = () => {
     const navigate = useNavigate();
-    
+    const [searchParams] = useSearchParams();
+
     // Form state
-    const [classId, setClassId] = useState<string>('');
+    const [classId, setClassId] = useState<string>(searchParams.get('classId') || '');
     const [sessionDate, setSessionDate] = useState<string>(getUpcomingSaturday());
     const [isNotSaturday, setIsNotSaturday] = useState<boolean>(false);
     const [worshipTopic, setWorshipTopic] = useState('');
@@ -107,10 +107,24 @@ const AddNewClassSession: React.FC = () => {
     const [cancellationReason, setCancellationReason] = useState<string>('');
 
     // Dynamic data state
+    const [classes, setClasses] = useState<Class[]>([]);
     const [studentsForClass, setStudentsForClass] = useState<Student[]>([]);
     const [teachersForClass, setTeachersForClass] = useState<Teacher[]>([]);
     const [studentAttendance, setStudentAttendance] = useState<Record<number, AttendanceState>>({});
     const [teacherAttendance, setTeacherAttendance] = useState<Record<number, AttendanceState>>({});
+
+    // Fetch classes on mount
+    useEffect(() => {
+        const fetchClasses = async () => {
+            try {
+                const data = await classService.getAll();
+                setClasses(data);
+            } catch (err) {
+                console.error('Failed to fetch classes:', err);
+            }
+        };
+        fetchClasses();
+    }, []);
 
     // Effect to check if selected date is a Saturday
     useEffect(() => {
@@ -132,29 +146,40 @@ const AddNewClassSession: React.FC = () => {
         }
 
         const numericClassId = parseInt(classId, 10);
-        
-        // Filter active students for the selected class
-        const filteredStudents = mockStudents.filter(s => s.classId === numericClassId && s.status === 'active');
-        setStudentsForClass(filteredStudents);
 
-        const initialStudentAttendance: Record<number, AttendanceState> = {};
-        filteredStudents.forEach(s => {
-            initialStudentAttendance[s.id] = { status: AttendanceStatus.Present, reason: '' };
-        });
-        setStudentAttendance(initialStudentAttendance);
+        const fetchClassRoster = async () => {
+            try {
+                // Fetch active students for the selected class
+                const students = await studentService.getAll({ classId: numericClassId, status: 'active' });
+                setStudentsForClass(students);
 
-        const teacherIds = mockTeacherClassMap
-            .filter(m => m.classId === numericClassId)
-            .map(m => m.teacherId);
-        const filteredTeachers = mockTeachers.filter(t => teacherIds.includes(t.id) && t.status === 'active');
-        setTeachersForClass(filteredTeachers);
-        
-        const initialTeacherAttendance: Record<number, AttendanceState> = {};
-        filteredTeachers.forEach(t => {
-            initialTeacherAttendance[t.id] = { status: AttendanceStatus.Present, reason: '' };
-        });
-        setTeacherAttendance(initialTeacherAttendance);
+                const initialStudentAttendance: Record<number, AttendanceState> = {};
+                students.forEach(s => {
+                    initialStudentAttendance[s.id] = { status: AttendanceStatus.Present, reason: '' };
+                });
+                setStudentAttendance(initialStudentAttendance);
 
+                // Fetch teacher assignments for current year
+                const currentYear = new Date().getFullYear().toString();
+                const allAssignments = await teacherAssignmentService.getAll(currentYear);
+                const classAssignments = allAssignments.filter(a => a.classId === numericClassId);
+                const teachers = classAssignments
+                    .map(a => a.teacher)
+                    .filter((t): t is Teacher => t !== undefined) as Teacher[];
+
+                setTeachersForClass(teachers);
+
+                const initialTeacherAttendance: Record<number, AttendanceState> = {};
+                teachers.forEach(t => {
+                    initialTeacherAttendance[t.id] = { status: AttendanceStatus.Present, reason: '' };
+                });
+                setTeacherAttendance(initialTeacherAttendance);
+            } catch (err) {
+                console.error('Failed to fetch class roster:', err);
+            }
+        };
+
+        fetchClassRoster();
     }, [classId]);
 
     const handleStudentAttendanceChange = (studentId: number, field: keyof AttendanceState, value: string) => {
@@ -177,61 +202,52 @@ const AddNewClassSession: React.FC = () => {
         });
     };
 
-    const handleSubmit = (e: React.FormEvent) => {
+    const handleSubmit = async (e: React.FormEvent) => {
         e.preventDefault();
         if (!classId) return;
 
-        const newSessionId = Math.max(0, ...mockClassSessions.map(s => s.id)) + 1;
-        const newSession = {
-            id: newSessionId,
-            classId: parseInt(classId),
-            sessionDate,
-            sessionType: '安息日學',
-            isCancelled: isCancelled,
-            cancellationReason: isCancelled ? cancellationReason : undefined,
-            worshipTopic: isCancelled ? undefined : (worshipTopic || undefined),
-            worshipTeacherName: isCancelled ? undefined : (worshipTeacherName || undefined),
-            activityTopic: isCancelled ? undefined : (activityTopic || undefined),
-            activityTeacherName: isCancelled ? undefined : (activityTeacherName || undefined),
-            offeringAmount: isCancelled ? 0 : (Number(offeringAmount) || 0),
-            auditorCount: isCancelled ? 0 : (Number(auditorCount) || 0),
-            notes: notes || undefined,
-        };
-        mockClassSessions.push(newSession);
+        try {
+            const sessionData = {
+                classId: parseInt(classId),
+                date: sessionDate,
+                sessionType: '安息日學',
+                isCancelled: isCancelled,
+                cancellationReason: isCancelled ? cancellationReason : undefined,
+                worshipTopic: isCancelled ? undefined : (worshipTopic || undefined),
+                worshipTeacherName: isCancelled ? undefined : (worshipTeacherName || undefined),
+                activityTopic: isCancelled ? undefined : (activityTopic || undefined),
+                activityTeacherName: isCancelled ? undefined : (activityTeacherName || undefined),
+                offeringAmount: isCancelled ? 0 : (Number(offeringAmount) || 0),
+                auditorCount: isCancelled ? 0 : (Number(auditorCount) || 0),
+                notes: notes || undefined,
+                studentAttendance: isCancelled ? [] : Object.entries(studentAttendance).map(([studentId, data]) => {
+                    const attendanceData = data as AttendanceState;
+                    return {
+                        studentId: parseInt(studentId),
+                        status: attendanceData.status,
+                        reason: attendanceData.reason || undefined,
+                    };
+                }),
+                teacherAttendance: isCancelled ? [] : Object.entries(teacherAttendance).map(([teacherId, data]) => {
+                    const attendanceData = data as AttendanceState;
+                    return {
+                        teacherId: parseInt(teacherId),
+                        status: attendanceData.status,
+                        reason: attendanceData.reason || undefined,
+                    };
+                }),
+            };
 
-        if (!isCancelled) {
-            let nextStudentRecId = Math.max(0, ...mockStudentAttendanceRecords.map(r => r.id)) + 1;
-            Object.entries(studentAttendance).forEach(([studentId, data]) => {
-                const val = data as AttendanceState;
-                mockStudentAttendanceRecords.push({
-                    id: nextStudentRecId++,
-                    sessionId: newSessionId,
-                    studentId: parseInt(studentId),
-                    status: val.status,
-                    reason: val.reason || undefined,
-                    sessionDate: sessionDate,
-                    sessionType: newSession.sessionType,
-                });
-            });
-
-            let nextTeacherRecId = Math.max(0, ...mockTeacherAttendanceRecords.map(r => r.id)) + 1;
-            Object.entries(teacherAttendance).forEach(([teacherId, data]) => {
-                const val = data as AttendanceState;
-                mockTeacherAttendanceRecords.push({
-                    id: nextTeacherRecId++,
-                    sessionId: newSessionId,
-                    teacherId: parseInt(teacherId),
-                    status: val.status,
-                    reason: val.reason || undefined,
-                });
-            });
+            await sessionService.create(sessionData);
+            alert('課程紀錄已成功儲存！');
+            navigate('/class-logbook');
+        } catch (err) {
+            console.error('Failed to create session:', err);
+            alert('儲存失敗，請稍後再試。');
         }
-
-        alert('課程紀錄已成功儲存！');
-        navigate('/class-logbook');
     };
-    
-    const formInputClass = "mt-1 block w-full rounded-2xl border-gray-200 shadow-inner focus:border-cute-primary focus:ring-cute-primary text-sm py-3 px-4 bg-gray-50";
+
+    const formInputClass = "mt-1 block w-full rounded-2xl border-gray-200 shadow-inner focus:border-cute-primary focus:ring-cute-primary text-sm py-3 px-4 bg-white text-gray-700";
     const formLabelClass = "block text-sm font-bold text-gray-600 mb-1";
 
     return (
@@ -250,7 +266,7 @@ const AddNewClassSession: React.FC = () => {
                 {/* Session Details */}
                 <div className="bg-white p-8 rounded-3xl shadow-lg shadow-purple-50 border border-white/50">
                     <h2 className="text-xl font-bold text-gray-700 border-b border-gray-100 pb-3 mb-6 flex items-center">
-                         <span className="w-8 h-8 bg-purple-100 text-purple-500 rounded-full flex items-center justify-center mr-3 text-sm">1</span>
+                        <span className="w-8 h-8 bg-purple-100 text-purple-500 rounded-full flex items-center justify-center mr-3 text-sm">1</span>
                         基本資訊
                     </h2>
                     <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
@@ -259,7 +275,7 @@ const AddNewClassSession: React.FC = () => {
                             <div className="relative">
                                 <select id="classId" value={classId} onChange={e => setClassId(e.target.value)} required className={`${formInputClass} appearance-none`}>
                                     <option value="" disabled>請選擇班級...</option>
-                                    {mockClasses.map(cls => <option key={cls.id} value={cls.id}>{cls.className}</option>)}
+                                    {classes.map(cls => <option key={cls.id} value={cls.id}>{cls.name}</option>)}
                                 </select>
                                 <div className="pointer-events-none absolute inset-y-0 right-0 flex items-center px-4 text-gray-500">
                                     <svg className="h-5 w-5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M19 9l-7 7-7-7"></path></svg>
@@ -275,7 +291,7 @@ const AddNewClassSession: React.FC = () => {
                                 </p>
                             )}
                         </div>
-                         <div className="md:col-span-2 mt-2">
+                        <div className="md:col-span-2 mt-2">
                             <label className="flex items-center space-x-3 cursor-pointer group">
                                 <div className="relative">
                                     <input id="isCancelled" name="isCancelled" type="checkbox" checked={isCancelled} onChange={(e) => setIsCancelled(e.target.checked)} className="sr-only" />
@@ -287,7 +303,7 @@ const AddNewClassSession: React.FC = () => {
                                     <p className="text-xs text-gray-400">勾選此項表示本日無授課</p>
                                 </div>
                             </label>
-                            
+
                             {isCancelled && (
                                 <div className="mt-4 animate-fade-in">
                                     <label htmlFor="cancellationReason" className={formLabelClass}>停課理由</label>
@@ -302,7 +318,7 @@ const AddNewClassSession: React.FC = () => {
                     {/* Curriculum */}
                     <div className="bg-white p-8 rounded-3xl shadow-lg shadow-blue-50 border border-white/50">
                         <h2 className="text-xl font-bold text-gray-700 border-b border-gray-100 pb-3 mb-6 flex items-center">
-                             <span className="w-8 h-8 bg-blue-100 text-blue-500 rounded-full flex items-center justify-center mr-3 text-sm">2</span>
+                            <span className="w-8 h-8 bg-blue-100 text-blue-500 rounded-full flex items-center justify-center mr-3 text-sm">2</span>
                             課程內容
                         </h2>
                         <div className="grid grid-cols-1 md:grid-cols-2 gap-x-8 gap-y-6">
@@ -356,54 +372,54 @@ const AddNewClassSession: React.FC = () => {
 
                     {/* Attendance */}
                     {classId && (
-                    <div className="bg-white p-8 rounded-3xl shadow-lg shadow-yellow-50 border border-white/50">
-                        <h2 className="text-xl font-bold text-gray-700 border-b border-gray-100 pb-3 mb-6 flex items-center">
-                             <span className="w-8 h-8 bg-yellow-100 text-yellow-600 rounded-full flex items-center justify-center mr-3 text-sm">3</span>
-                            出席狀況
-                        </h2>
-                        <div className="grid grid-cols-1 lg:grid-cols-2 gap-8">
-                            <div className="bg-gray-50/50 p-4 rounded-3xl border border-gray-100">
-                                <h3 className="text-lg font-bold text-gray-700 mb-4 flex items-center justify-between">
-                                    <span>👶 學員</span>
-                                    <span className="bg-gray-200 text-gray-600 text-xs px-2 py-1 rounded-full">{studentsForClass.length} 人</span>
-                                </h3>
-                                <div className="space-y-2 max-h-96 overflow-y-auto pr-2 custom-scrollbar">
-                                    {studentsForClass.length > 0 ? studentsForClass.map(student => (
-                                        <AttendanceRow 
-                                            key={student.id}
-                                            label={student.fullName}
-                                            state={studentAttendance[student.id] || { status: AttendanceStatus.Present, reason: '' }}
-                                            onChange={(field, value) => handleStudentAttendanceChange(student.id, field, value)}
-                                            disabled={isCancelled}
-                                        />
-                                    )) : <p className="text-gray-400 text-center py-8 bg-white rounded-xl border border-dashed">此班級尚無學員</p>}
+                        <div className="bg-white p-8 rounded-3xl shadow-lg shadow-yellow-50 border border-white/50">
+                            <h2 className="text-xl font-bold text-gray-700 border-b border-gray-100 pb-3 mb-6 flex items-center">
+                                <span className="w-8 h-8 bg-yellow-100 text-yellow-600 rounded-full flex items-center justify-center mr-3 text-sm">3</span>
+                                出席狀況
+                            </h2>
+                            <div className="grid grid-cols-1 lg:grid-cols-2 gap-8">
+                                <div className="bg-gray-50/50 p-4 rounded-3xl border border-gray-100">
+                                    <h3 className="text-lg font-bold text-gray-700 mb-4 flex items-center justify-between">
+                                        <span>👶 學員</span>
+                                        <span className="bg-gray-200 text-gray-600 text-xs px-2 py-1 rounded-full">{studentsForClass.length} 人</span>
+                                    </h3>
+                                    <div className="space-y-2 max-h-96 overflow-y-auto pr-2 custom-scrollbar">
+                                        {studentsForClass.length > 0 ? studentsForClass.map(student => (
+                                            <AttendanceRow
+                                                key={student.id}
+                                                label={student.fullName}
+                                                state={studentAttendance[student.id] || { status: AttendanceStatus.Present, reason: '' }}
+                                                onChange={(field, value) => handleStudentAttendanceChange(student.id, field, value)}
+                                                disabled={isCancelled}
+                                            />
+                                        )) : <p className="text-gray-400 text-center py-8 bg-white rounded-xl border border-dashed">此班級尚無學員</p>}
+                                    </div>
                                 </div>
-                            </div>
-                            <div className="bg-gray-50/50 p-4 rounded-3xl border border-gray-100">
-                                <h3 className="text-lg font-bold text-gray-700 mb-4 flex items-center justify-between">
-                                    <span>🧑‍🏫 教員</span>
-                                    <span className="bg-gray-200 text-gray-600 text-xs px-2 py-1 rounded-full">{teachersForClass.length} 人</span>
-                                </h3>
-                                <div className="space-y-2">
-                                    {teachersForClass.length > 0 ? teachersForClass.map(teacher => (
-                                        <AttendanceRow 
-                                            key={teacher.id}
-                                            label={teacher.fullName}
-                                            state={teacherAttendance[teacher.id] || { status: AttendanceStatus.Present, reason: '' }}
-                                            onChange={(field, value) => handleTeacherAttendanceChange(teacher.id, field, value)}
-                                            disabled={isCancelled}
-                                        />
-                                    )) : <p className="text-gray-400 text-center py-8 bg-white rounded-xl border border-dashed">此班級尚無教員</p>}
+                                <div className="bg-gray-50/50 p-4 rounded-3xl border border-gray-100">
+                                    <h3 className="text-lg font-bold text-gray-700 mb-4 flex items-center justify-between">
+                                        <span>🧑‍🏫 教員</span>
+                                        <span className="bg-gray-200 text-gray-600 text-xs px-2 py-1 rounded-full">{teachersForClass.length} 人</span>
+                                    </h3>
+                                    <div className="space-y-2">
+                                        {teachersForClass.length > 0 ? teachersForClass.map(teacher => (
+                                            <AttendanceRow
+                                                key={teacher.id}
+                                                label={teacher.fullName}
+                                                state={teacherAttendance[teacher.id] || { status: AttendanceStatus.Present, reason: '' }}
+                                                onChange={(field, value) => handleTeacherAttendanceChange(teacher.id, field, value)}
+                                                disabled={isCancelled}
+                                            />
+                                        )) : <p className="text-gray-400 text-center py-8 bg-white rounded-xl border border-dashed">此班級尚無教員</p>}
+                                    </div>
                                 </div>
                             </div>
                         </div>
-                    </div>
                     )}
-                    
+
                     {/* Financials & Notes */}
                     <div className="bg-white p-8 rounded-3xl shadow-lg shadow-indigo-50 border border-white/50">
                         <h2 className="text-xl font-bold text-gray-700 border-b border-gray-100 pb-3 mb-6 flex items-center">
-                             <span className="w-8 h-8 bg-indigo-100 text-indigo-500 rounded-full flex items-center justify-center mr-3 text-sm">4</span>
+                            <span className="w-8 h-8 bg-indigo-100 text-indigo-500 rounded-full flex items-center justify-center mr-3 text-sm">4</span>
                             其他資訊
                         </h2>
                         <div className="grid grid-cols-1 md:grid-cols-2 gap-6 mb-6">
@@ -432,7 +448,7 @@ const AddNewClassSession: React.FC = () => {
                 <div className="flex justify-end pt-4 pb-10">
                     <button type="submit" className="bg-gradient-to-r from-cute-primary to-blue-400 text-white px-10 py-4 rounded-full hover:shadow-lg hover:scale-105 transition-all duration-300 flex items-center text-lg font-bold shadow-md disabled:bg-gray-300 disabled:from-gray-300 disabled:to-gray-400 disabled:cursor-not-allowed" disabled={!classId}>
                         <svg xmlns="http://www.w3.org/2000/svg" className="h-6 w-6 mr-2" viewBox="0 0 20 20" fill="currentColor">
-                           <path d="M7.5 2.5a.5.5 0 00-1 0v3.586l-1.793-1.793a.5.5 0 00-.707.707l2.5 2.5a.5.5 0 00.707 0l2.5-2.5a.5.5 0 00-.707-.707L8.5 6.086V2.5zM12 11.5a.5.5 0 01.5-.5h2a.5.5 0 010 1h-2a.5.5 0 01-.5-.5zm-3 3a.5.5 0 01.5-.5h5a.5.5 0 010 1h-5a.5.5 0 01-.5-.5zM2 3a1 1 0 011-1h10a1 1 0 011 1v1h2a1 1 0 011 1v10a1 1 0 01-1 1H3a1 1 0 01-1-1V5a1 1 0 011-1h2V3zm1 2v10h12V5H3z" />
+                            <path d="M7.5 2.5a.5.5 0 00-1 0v3.586l-1.793-1.793a.5.5 0 00-.707.707l2.5 2.5a.5.5 0 00.707 0l2.5-2.5a.5.5 0 00-.707-.707L8.5 6.086V2.5zM12 11.5a.5.5 0 01.5-.5h2a.5.5 0 010 1h-2a.5.5 0 01-.5-.5zm-3 3a.5.5 0 01.5-.5h5a.5.5 0 010 1h-5a.5.5 0 01-.5-.5zM2 3a1 1 0 011-1h10a1 1 0 011 1v1h2a1 1 0 011 1v10a1 1 0 01-1 1H3a1 1 0 01-1-1V5a1 1 0 011-1h2V3zm1 2v10h12V5H3z" />
                         </svg>
                         儲存紀錄
                     </button>
