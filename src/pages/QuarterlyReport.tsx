@@ -1,7 +1,8 @@
 
 import React, { useState, useEffect, useMemo } from 'react';
-import { mockStudents, mockClasses, mockClassSessions, mockStudentAttendanceRecords, mockTeacherAttendanceRecords, mockTeachers, mockTeacherClassMap } from '../data/mockData';
-import { StudentType, AttendanceStatus, Class } from '../types';
+import { studentService, classService, sessionService, teacherService, teacherAssignmentService } from '../services';
+import type { TeacherAssignment } from '../services/teacherAssignmentService';
+import { StudentType, AttendanceStatus, Class, Student, ClassSession, Teacher } from '../types';
 
 interface WeeklyClassData {
     members: number;
@@ -15,15 +16,15 @@ interface WeeklyClassData {
 }
 
 interface ReportData {
-  enrolled: Record<number, { members: number; seekers: number; teachers: number }>;
-  weeklyData: {
-    month: number;
-    day: number;
-    data: Record<number, WeeklyClassData>;
-  }[];
-  totals: Record<number, { members: number; seekers: number; auditors: number; teachers: number; offering: number }>;
-  averages: Record<number, { members: number; seekers: number; auditors: number; teachers: number; offering: number }>;
-  percentages: Record<number, { members: string; seekers: string }>;
+    enrolled: Record<number, { members: number; seekers: number; teachers: number }>;
+    weeklyData: {
+        month: number;
+        day: number;
+        data: Record<number, WeeklyClassData>;
+    }[];
+    totals: Record<number, { members: number; seekers: number; auditors: number; teachers: number; offering: number }>;
+    averages: Record<number, { members: number; seekers: number; auditors: number; teachers: number; offering: number }>;
+    percentages: Record<number, { members: string; seekers: string }>;
 }
 
 const getCurrentAcademicYear = (date: Date = new Date()): number => {
@@ -38,7 +39,7 @@ const rocToGregorian = (rocYear: number): number => rocYear + 1911;
 const getSaturdaysInQuarter = (academicYearStart: number, quarter: number): Date[] => {
     const dates: Date[] = [];
     let startDate: Date, endDate: Date;
-    
+
     let startMonth: number;
     let yearOffset = 0;
 
@@ -51,7 +52,7 @@ const getSaturdaysInQuarter = (academicYearStart: number, quarter: number): Date
     }
 
     const startYear = academicYearStart + yearOffset;
-    
+
     // Create dates in UTC to avoid any local timezone interference.
     startDate = new Date(Date.UTC(startYear, startMonth, 1));
     endDate = new Date(Date.UTC(startYear, startMonth + 3, 0)); // Day 0 gives the last day of the previous month.
@@ -61,7 +62,7 @@ const getSaturdaysInQuarter = (academicYearStart: number, quarter: number): Date
     while (currentDate.getUTCDay() !== 6 && currentDate <= endDate) {
         currentDate.setUTCDate(currentDate.getUTCDate() + 1);
     }
-    
+
     // Add all subsequent Saturdays within the quarter
     while (currentDate <= endDate) {
         dates.push(new Date(currentDate));
@@ -78,15 +79,50 @@ const QuarterlyReport: React.FC = () => {
     const [reportData, setReportData] = useState<ReportData | null>(null);
     const [isLoading, setIsLoading] = useState(false);
 
+    // State for data from API
+    const [students, setStudents] = useState<Student[]>([]);
+    const [teachers, setTeachers] = useState<Teacher[]>([]);
+    const [classes, setClasses] = useState<Class[]>([]);
+    const [sessions, setSessions] = useState<ClassSession[]>([]);
+    const [teacherAssignments, setTeacherAssignments] = useState<TeacherAssignment[]>([]);
+    const [dataLoaded, setDataLoaded] = useState(false);
+
+    // Fetch all data on mount
+    useEffect(() => {
+        const fetchData = async () => {
+            try {
+                const [studentsData, teachersData, classesData, sessionsData, assignmentsData] = await Promise.all([
+                    studentService.getAll(),
+                    teacherService.getAll(),
+                    classService.getAll(),
+                    sessionService.getAll(),
+                    teacherAssignmentService.getAll()
+                ]);
+
+                setStudents(studentsData);
+                setTeachers(teachersData);
+                setClasses(classesData);
+                setSessions(sessionsData);
+                setTeacherAssignments(assignmentsData);
+                setDataLoaded(true);
+            } catch (err) {
+                console.error('Failed to fetch report data:', err);
+                alert('無法載入報表資料，請重新整理頁面。');
+            }
+        };
+
+        fetchData();
+    }, []);
+
     const orderedClasses = useMemo(() => {
         const order = ['幼兒班', '幼年班', '少年班', '國中班', '高中班'];
-        return [...mockClasses].sort((a, b) => order.indexOf(a.className) - order.indexOf(b.className));
-    }, []);
+        return [...classes].sort((a, b) => order.indexOf(a.name) - order.indexOf(b.name));
+    }, [classes]);
 
     const generateReport = () => {
         setIsLoading(true);
         setReportData(null);
-        
+
         setTimeout(() => {
             const gregorianYear = rocToGregorian(selectedRocYear);
             const academicYearString = gregorianYear.toString();
@@ -97,24 +133,25 @@ const QuarterlyReport: React.FC = () => {
             const academicYearEndStr = `${gregorianYear + 1}-08-31`;
 
             orderedClasses.forEach(cls => {
-                const teachersInClassCount = mockTeacherClassMap.filter(
+                const teachersInClassCount = teacherAssignments.filter(
                     m => m.classId === cls.id && m.academicYear === academicYearString
                 ).length;
 
-                const sessionsForClassInYear = mockClassSessions.filter(s => 
-                    s.classId === cls.id && 
-                    s.sessionDate >= academicYearStartStr && 
+                const sessionsForClassInYear = sessions.filter(s =>
+                    s.classId === cls.id &&
+                    s.sessionDate >= academicYearStartStr &&
                     s.sessionDate <= academicYearEndStr
                 );
-                
+
                 const sessionIdsForClassInYear = new Set(sessionsForClassInYear.map(s => s.id));
-                
-                const studentRecordsForClassInYear = mockStudentAttendanceRecords.filter(r => 
-                    sessionIdsForClassInYear.has(r.sessionId)
+
+                // Get student attendance from sessions
+                const studentRecordsForClassInYear = sessionsForClassInYear.flatMap(session =>
+                    session.studentAttendance || []
                 );
-                
+
                 const uniqueStudentIds = [...new Set(studentRecordsForClassInYear.map(r => r.studentId))];
-                const enrolledStudents = mockStudents.filter(s => uniqueStudentIds.includes(s.id));
+                const enrolledStudents = students.filter(s => uniqueStudentIds.includes(s.id));
 
                 enrolled[cls.id] = {
                     members: enrolledStudents.filter(s => s.studentType === StudentType.Member).length,
@@ -122,18 +159,18 @@ const QuarterlyReport: React.FC = () => {
                     teachers: teachersInClassCount,
                 };
             });
-            
+
             // --- 2. Process Weekly Data (Date format corrected) ---
             const allSaturdays = getSaturdaysInQuarter(gregorianYear, selectedQuarter);
 
             const sessionsByDate = new Map<string, any[]>();
-            mockClassSessions.forEach(s => {
+            sessions.forEach(s => {
                 if (!sessionsByDate.has(s.sessionDate)) {
                     sessionsByDate.set(s.sessionDate, []);
                 }
                 sessionsByDate.get(s.sessionDate)!.push(s);
             });
-            
+
             const toYyyyMmDd = (date: Date): string => {
                 const year = date.getUTCFullYear();
                 const month = (date.getUTCMonth() + 1).toString().padStart(2, '0');
@@ -150,19 +187,19 @@ const QuarterlyReport: React.FC = () => {
                     const session = sessionsForDay.find(s => s.classId === cls.id);
                     if (session) {
                         if (session.isCancelled) {
-                             weeklyCounts[cls.id] = { members: 0, seekers: 0, auditors: 0, teachers: 0, offering: 0, isCancelled: true, cancellationReason: session.cancellationReason };
+                            weeklyCounts[cls.id] = { members: 0, seekers: 0, auditors: 0, teachers: 0, offering: 0, isCancelled: true, cancellationReason: session.cancellationReason };
                         } else {
-                            const studentAtt = mockStudentAttendanceRecords.filter(r => r.sessionId === session.id);
-                            const teacherAtt = mockTeacherAttendanceRecords.filter(r => r.sessionId === session.id);
+                            const studentAtt = session.studentAttendance || [];
+                            const teacherAtt = session.teacherAttendance || [];
 
                             const presentStudentIds = new Set(
-                            studentAtt
-                                .filter(sa => sa.status === AttendanceStatus.Present || sa.status === AttendanceStatus.Late)
-                                .map(sa => sa.studentId)
+                                studentAtt
+                                    .filter(sa => sa.status === AttendanceStatus.Present || sa.status === AttendanceStatus.Late)
+                                    .map(sa => sa.studentId)
                             );
 
-                            const presentStudents = mockStudents.filter(s => presentStudentIds.has(s.id));
-                            
+                            const presentStudents = students.filter(s => presentStudentIds.has(s.id));
+
                             weeklyCounts[cls.id] = {
                                 members: presentStudents.filter(s => s.studentType === StudentType.Member).length,
                                 seekers: presentStudents.filter(s => s.studentType === StudentType.Seeker).length,
@@ -176,7 +213,7 @@ const QuarterlyReport: React.FC = () => {
                         weeklyCounts[cls.id] = { members: 0, seekers: 0, auditors: 0, teachers: 0, offering: 0, isCancelled: false, noRecord: true };
                     }
                 });
-                
+
                 return {
                     month: saturday.getUTCMonth() + 1,
                     day: saturday.getUTCDate(),
@@ -219,7 +256,7 @@ const QuarterlyReport: React.FC = () => {
                     teachers: parseFloat((classTotals.teachers / divisor).toFixed(1)),
                     offering: parseFloat((classTotals.offering / divisor).toFixed(2)),
                 };
-                
+
                 const totalEnrolledStudents = enrolled[cls.id].members + enrolled[cls.id].seekers;
                 percentages[cls.id] = {
                     members: totalEnrolledStudents > 0 ? `${Math.round(((averages[cls.id].members + averages[cls.id].seekers) / totalEnrolledStudents) * 100)}%` : 'N/A',
@@ -233,8 +270,10 @@ const QuarterlyReport: React.FC = () => {
     };
 
     useEffect(() => {
-        generateReport();
-    }, []);
+        if (dataLoaded) {
+            generateReport();
+        }
+    }, [dataLoaded]);
 
     const yearsToShow = Array.from({ length: 5 }, (_, i) => currentRocYear - i);
 
@@ -267,10 +306,10 @@ const QuarterlyReport: React.FC = () => {
             <div className="no-print flex flex-wrap gap-4 items-end mb-6">
                 <div>
                     <label htmlFor="year-select" className="block text-sm font-medium text-gray-700">學年度</label>
-                    <select 
-                        id="year-select" 
-                        value={selectedRocYear} 
-                        onChange={e => setSelectedRocYear(parseInt(e.target.value))} 
+                    <select
+                        id="year-select"
+                        value={selectedRocYear}
+                        onChange={e => setSelectedRocYear(parseInt(e.target.value))}
                         style={{ backgroundColor: 'white', color: '#333' }}
                         className="mt-1 block w-full rounded-md border-gray-300 shadow-sm focus:border-church-blue-500 focus:ring-church-blue-500 sm:text-sm bg-white text-gray-900"
                     >
@@ -279,10 +318,10 @@ const QuarterlyReport: React.FC = () => {
                 </div>
                 <div>
                     <label htmlFor="quarter-select" className="block text-sm font-medium text-gray-700">季度</label>
-                    <select 
-                        id="quarter-select" 
-                        value={selectedQuarter} 
-                        onChange={e => setSelectedQuarter(parseInt(e.target.value))} 
+                    <select
+                        id="quarter-select"
+                        value={selectedQuarter}
+                        onChange={e => setSelectedQuarter(parseInt(e.target.value))}
                         style={{ backgroundColor: 'white', color: '#333' }}
                         className="mt-1 block w-full rounded-md border-gray-300 shadow-sm focus:border-church-blue-500 focus:ring-church-blue-500 sm:text-sm bg-white text-gray-900"
                     >
@@ -301,15 +340,15 @@ const QuarterlyReport: React.FC = () => {
             {isLoading && <div className="text-center p-8">正在產生報表...</div>}
 
             {reportData && !isLoading && (
-                 <div id="print-section" className="overflow-x-auto">
-                    <h2 className="text-xl font-bold text-center text-black">{selectedRocYear}學年度 石牌教會 宗教教育股 第{['一','二','三','四'][selectedQuarter-1]}季 季報表</h2>
-                    <p className="text-sm text-center text-black mb-4">填表日期：{new Date().toLocaleDateString('zh-TW', { year:'numeric', month:'long', day:'numeric'})}</p>
+                <div id="print-section" className="overflow-x-auto">
+                    <h2 className="text-xl font-bold text-center text-black">{selectedRocYear}學年度 石牌教會 宗教教育股 第{['一', '二', '三', '四'][selectedQuarter - 1]}季 季報表</h2>
+                    <p className="text-sm text-center text-black mb-4">填表日期：{new Date().toLocaleDateString('zh-TW', { year: 'numeric', month: 'long', day: 'numeric' })}</p>
                     <table className="min-w-full border-collapse border border-black text-xs text-center text-black">
                         <thead>
                             <tr className="border border-black">
                                 <th rowSpan={2} colSpan={3} className="border border-black p-1">班別</th>
                                 {orderedClasses.map(cls => (
-                                    <th key={cls.id} colSpan={5} className="border border-black p-1">{cls.className}</th>
+                                    <th key={cls.id} colSpan={5} className="border border-black p-1">{cls.name}</th>
                                 ))}
                             </tr>
                             <tr className="border border-black">
@@ -362,9 +401,9 @@ const QuarterlyReport: React.FC = () => {
                                     })}
                                 </tr>
                             ))}
-                             <tr className="border border-black bg-gray-100">
+                            <tr className="border border-black bg-gray-100">
                                 <td colSpan={2} className="border border-black p-1">合計</td>
-                                 {orderedClasses.map(cls => (
+                                {orderedClasses.map(cls => (
                                     <React.Fragment key={cls.id}>
                                         <td className="border border-black p-1">{reportData.totals[cls.id].members}</td>
                                         <td className="border border-black p-1">{reportData.totals[cls.id].seekers}</td>
@@ -376,7 +415,7 @@ const QuarterlyReport: React.FC = () => {
                             </tr>
                             <tr className="border border-black bg-gray-100">
                                 <td colSpan={2} className="border border-black p-1">平均</td>
-                                 {orderedClasses.map(cls => (
+                                {orderedClasses.map(cls => (
                                     <React.Fragment key={cls.id}>
                                         <td className="border border-black p-1">{reportData.averages[cls.id].members}</td>
                                         <td className="border border-black p-1">{reportData.averages[cls.id].seekers}</td>
@@ -388,7 +427,7 @@ const QuarterlyReport: React.FC = () => {
                             </tr>
                             <tr className="border border-black bg-gray-100">
                                 <td colSpan={2} className="border border-black p-1">出席率</td>
-                                 {orderedClasses.map(cls => (
+                                {orderedClasses.map(cls => (
                                     <React.Fragment key={cls.id}>
                                         <td colSpan={2} className="border border-black p-1">{reportData.percentages[cls.id].members}</td>
                                         <td className="border border-black p-1"></td>
@@ -401,7 +440,7 @@ const QuarterlyReport: React.FC = () => {
                     </table>
                 </div>
             )}
-            
+
             {!reportData && !isLoading && <div className="text-center p-8">請選擇學年度與季度以產生報表。</div>}
         </div>
     );
