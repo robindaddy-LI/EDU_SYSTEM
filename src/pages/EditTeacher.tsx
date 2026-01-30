@@ -2,35 +2,45 @@
 import React, { useState, useEffect } from 'react';
 import { useParams, useNavigate } from 'react-router-dom';
 import { Teacher, TeacherType } from '../types';
-import { mockTeachers } from '../data/mockData';
+import { teacherService } from '../services';
 
 const EditTeacher: React.FC = () => {
     const { id } = useParams<{ id: string }>();
     const navigate = useNavigate();
-    
+
     const [formData, setFormData] = useState<Omit<Teacher, 'id'> | null>(null);
     const [isLoading, setIsLoading] = useState(true);
+    const [isSubmitting, setIsSubmitting] = useState(false);
 
     useEffect(() => {
-        const teacherId = id ? parseInt(id, 10) : NaN;
-        if (isNaN(teacherId)) {
-            setIsLoading(false);
-            return;
-        }
+        const fetchData = async () => {
+            const teacherId = id ? parseInt(id, 10) : NaN;
+            if (isNaN(teacherId)) {
+                setIsLoading(false);
+                return;
+            }
 
-        const teacherToEdit = mockTeachers.find(t => t.id === teacherId);
+            try {
+                const teacherData = await teacherService.getById(teacherId);
 
-        if (teacherToEdit) {
-            const { id: teacherIdNum, ...restOfTeacherData } = teacherToEdit;
-            setFormData({
-                ...restOfTeacherData,
-                phoneNumber: restOfTeacherData.phoneNumber || '',
-                email: restOfTeacherData.email || '',
-                notes: restOfTeacherData.notes || '',
-            });
-        }
-        
-        setIsLoading(false);
+                if (teacherData) {
+                    const { id: teacherIdNum, ...restOfTeacherData } = teacherData;
+                    setFormData({
+                        ...restOfTeacherData,
+                        phoneNumber: restOfTeacherData.phoneNumber || '',
+                        email: restOfTeacherData.email || '',
+                        notes: restOfTeacherData.notes || '',
+                    });
+                }
+            } catch (err) {
+                console.error('Failed to fetch teacher:', err);
+                alert('無法載入教員資料，請重新整理頁面。');
+            } finally {
+                setIsLoading(false);
+            }
+        };
+
+        fetchData();
     }, [id]);
 
     const handleChange = (e: React.ChangeEvent<HTMLInputElement | HTMLSelectElement | HTMLTextAreaElement>) => {
@@ -40,7 +50,7 @@ const EditTeacher: React.FC = () => {
         }
     };
 
-    const handleSubmit = (e: React.FormEvent) => {
+    const handleSubmit = async (e: React.FormEvent) => {
         e.preventDefault();
         const teacherId = id ? parseInt(id, 10) : NaN;
         if (!formData || isNaN(teacherId) || !formData.fullName) {
@@ -48,21 +58,26 @@ const EditTeacher: React.FC = () => {
             return;
         }
 
-        const teacherIndex = mockTeachers.findIndex(t => t.id === teacherId);
-        if (teacherIndex === -1) {
-            alert('找不到要更新的教員！');
-            return;
+        setIsSubmitting(true);
+        try {
+            const updateData = {
+                fullName: formData.fullName,
+                teacherType: formData.teacherType,
+                status: formData.status,
+                phoneNumber: formData.phoneNumber || undefined,
+                email: formData.email || undefined,
+                notes: formData.notes || undefined,
+            };
+
+            await teacherService.update(teacherId, updateData);
+            alert('教員資料已成功更新！');
+            navigate(`/teachers/${id}`);
+        } catch (err) {
+            console.error('Failed to update teacher:', err);
+            alert('更新教員資料失敗，請稍後再試。');
+        } finally {
+            setIsSubmitting(false);
         }
-
-        const updatedTeacher: Teacher = {
-            id: teacherId,
-            ...formData,
-        };
-
-        mockTeachers[teacherIndex] = updatedTeacher;
-        
-        alert('教員資料已成功更新！');
-        navigate(`/teachers/${id}`);
     };
 
     const formInputClass = "mt-1 block w-full rounded-md border-gray-300 shadow-sm focus:border-church-blue-500 focus:ring-church-blue-500 sm:text-sm bg-white text-gray-900";
@@ -89,7 +104,7 @@ const EditTeacher: React.FC = () => {
                     取消
                 </button>
             </div>
-            
+
             <form onSubmit={handleSubmit} className="space-y-8">
                 <div className="bg-white p-6 rounded-lg shadow-md">
                     <h2 className="text-xl font-semibold text-gray-700 border-b pb-3 mb-4">基本資料</h2>
@@ -105,7 +120,7 @@ const EditTeacher: React.FC = () => {
                                 <option value={TeacherType.Trainee}>見習教員</option>
                             </select>
                         </div>
-                         <div>
+                        <div>
                             <label htmlFor="status" className={formLabelClass}>狀態</label>
                             <select id="status" name="status" value={formData.status} onChange={handleChange} className={formInputClass}>
                                 <option value="active">在職</option>
@@ -132,9 +147,9 @@ const EditTeacher: React.FC = () => {
                 </div>
 
                 <div className="flex justify-end pt-4">
-                     <button type="submit" className="bg-church-blue-600 text-white px-6 py-3 rounded-lg hover:bg-church-blue-700 transition-colors duration-200 flex items-center text-base font-semibold shadow-md">
+                    <button type="submit" disabled={isSubmitting} className="bg-church-blue-600 text-white px-6 py-3 rounded-lg hover:bg-church-blue-700 transition-colors duration-200 flex items-center text-base font-semibold shadow-md disabled:bg-gray-400 disabled:cursor-not-allowed">
                         <svg xmlns="http://www.w3.org/2000/svg" className="h-5 w-5 mr-2" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-                           <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M5 13l4 4L19 7" />
+                            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M5 13l4 4L19 7" />
                         </svg>
                         儲存變更
                     </button>

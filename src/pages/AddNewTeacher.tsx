@@ -2,10 +2,12 @@
 import React, { useState } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { Teacher, TeacherType } from '../types';
-import { mockTeachers } from '../data/mockData';
+import { teacherService } from '../services';
 
 const AddNewTeacher: React.FC = () => {
     const navigate = useNavigate();
+    const [isSubmitting, setIsSubmitting] = useState(false);
+
     const [formData, setFormData] = useState({
         fullName: '',
         teacherType: TeacherType.Formal,
@@ -20,23 +22,33 @@ const AddNewTeacher: React.FC = () => {
         setFormData(prev => ({ ...prev, [name]: value }));
     };
 
-    const handleSubmit = (e: React.FormEvent) => {
+    const handleSubmit = async (e: React.FormEvent) => {
         e.preventDefault();
         if (!formData.fullName) {
             alert('請填寫「姓名」欄位！');
             return;
         }
 
-        const newTeacherId = Math.max(0, ...mockTeachers.map(t => t.id)) + 1;
-        
-        const newTeacher: Teacher = {
-            id: newTeacherId,
-            ...formData,
-        };
-        
-        mockTeachers.push(newTeacher);
-        alert('教員已成功新增！');
-        navigate('/teachers');
+        setIsSubmitting(true);
+        try {
+            const teacherData = {
+                fullName: formData.fullName,
+                teacherType: formData.teacherType,
+                status: formData.status,
+                phoneNumber: formData.phoneNumber || undefined,
+                email: formData.email || undefined,
+                notes: formData.notes || undefined,
+            };
+
+            await teacherService.create(teacherData);
+            alert('教員已成功新增！');
+            navigate('/teachers');
+        } catch (err) {
+            console.error('Failed to create teacher:', err);
+            alert('新增教員失敗，請稍後再試。');
+        } finally {
+            setIsSubmitting(false);
+        }
     };
 
     const formInputClass = "mt-1 block w-full rounded-md border-gray-300 shadow-sm focus:border-church-blue-500 focus:ring-church-blue-500 sm:text-sm bg-white text-gray-900";
@@ -50,13 +62,13 @@ const AddNewTeacher: React.FC = () => {
                     onClick={() => navigate('/teachers')}
                     className="bg-gray-200 text-gray-700 px-4 py-2 rounded-lg hover:bg-gray-300 transition-colors duration-200 flex items-center"
                 >
-                     <svg xmlns="http://www.w3.org/2000/svg" className="h-5 w-5 mr-2" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                    <svg xmlns="http://www.w3.org/2000/svg" className="h-5 w-5 mr-2" fill="none" viewBox="0 0 24 24" stroke="currentColor">
                         <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M10 19l-7-7m0 0l7-7m-7 7h18" />
                     </svg>
                     返回列表
                 </button>
             </div>
-            
+
             <form onSubmit={handleSubmit} className="space-y-8">
                 <div className="bg-white p-6 rounded-lg shadow-md">
                     <h2 className="text-xl font-semibold text-gray-700 border-b pb-3 mb-4">基本資料</h2>
@@ -72,7 +84,7 @@ const AddNewTeacher: React.FC = () => {
                                 <option value={TeacherType.Trainee}>見習教員</option>
                             </select>
                         </div>
-                         <div>
+                        <div>
                             <label htmlFor="status" className={formLabelClass}>狀態</label>
                             <select id="status" name="status" value={formData.status} onChange={handleChange} className={formInputClass}>
                                 <option value="active">在職</option>
@@ -99,9 +111,9 @@ const AddNewTeacher: React.FC = () => {
                 </div>
 
                 <div className="flex justify-end pt-4">
-                     <button type="submit" className="bg-church-blue-600 text-white px-6 py-3 rounded-lg hover:bg-church-blue-700 transition-colors duration-200 flex items-center text-base font-semibold shadow-md">
+                    <button type="submit" disabled={isSubmitting} className="bg-church-blue-600 text-white px-6 py-3 rounded-lg hover:bg-church-blue-700 transition-colors duration-200 flex items-center text-base font-semibold shadow-md disabled:bg-gray-400 disabled:cursor-not-allowed">
                         <svg xmlns="http://www.w3.org/2000/svg" className="h-5 w-5 mr-2" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-                           <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 6v6m0 0v6m0-6h6m-6 0H6" />
+                            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 6v6m0 0v6m0-6h6m-6 0H6" />
                         </svg>
                         新增教員
                     </button>
