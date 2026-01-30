@@ -171,11 +171,13 @@ async function main() {
     for (const user of mockUsers) {
         await prisma.user.upsert({
             where: { id: user.id },
-            update: {},
+            update: {
+                passwordHash: user.username, // For testing, password is same as username
+            },
             create: {
                 id: user.id,
                 username: user.username,
-                passwordHash: 'placeholder_hash', // In reality, use bcrypted password
+                passwordHash: user.username, // For testing, password is same as username
                 fullName: user.fullName,
                 role: user.role,
                 classId: user.classId,

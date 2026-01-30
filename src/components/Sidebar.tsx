@@ -23,7 +23,7 @@ const allNavItems = [
 ];
 
 const Sidebar: React.FC<SidebarProps> = ({ isOpen, onClose }) => {
-    const { currentUser, setCurrentUser } = useAuth();
+    const { currentUser, logout } = useAuth();
     const navigate = useNavigate();
     const [availableUsers, setAvailableUsers] = React.useState<{ [key in UserRole]?: import('../types').User }>({});
 
@@ -59,22 +59,9 @@ const Sidebar: React.FC<SidebarProps> = ({ isOpen, onClose }) => {
     const teacherUser = availableUsers[UserRole.Teacher];
     const recorderUser = availableUsers[UserRole.Recorder];
 
-    const handleUserChange = (e: React.ChangeEvent<HTMLSelectElement>) => {
-        const role = e.target.value as UserRole;
-        const newUser = availableUsers[role];
-
-        if (newUser) {
-            setCurrentUser(newUser);
-            if (newUser.role === UserRole.Recorder) {
-                if (newUser.classId) {
-                    navigate(`/class-logbook/class/${newUser.classId}`);
-                } else {
-                    navigate('/class-logbook');
-                }
-            } else {
-                navigate('/');
-            }
-        }
+    const handleLogout = () => {
+        logout();
+        navigate('/login');
     };
 
     return (
@@ -102,25 +89,6 @@ const Sidebar: React.FC<SidebarProps> = ({ isOpen, onClose }) => {
                 </button>
             </div>
 
-            <div className="px-6 py-4">
-                <div className="bg-white/50 p-1 rounded-2xl border border-white/60">
-                    <label className="block text-[10px] font-bold text-gray-400 mb-1 px-2 uppercase tracking-wider">使用者視角 (演示模式)</label>
-                    <div className="relative">
-                        <select
-                            value={currentUser.role}
-                            onChange={handleUserChange}
-                            className="w-full appearance-none bg-white text-gray-600 text-sm font-bold rounded-xl px-4 py-2 border-none shadow-sm focus:ring-2 focus:ring-cute-primary cursor-pointer"
-                        >
-                            <option value={UserRole.Admin}>系統管理員</option>
-                            <option value={UserRole.Teacher}>班負責 ({teacherUser?.fullName})</option>
-                            <option value={UserRole.Recorder}>紀錄人員 ({recorderUser?.fullName})</option>
-                        </select>
-                        <div className="pointer-events-none absolute inset-y-0 right-0 flex items-center px-3 text-gray-400">
-                            <svg className="h-4 w-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M19 9l-7 7-7-7"></path></svg>
-                        </div>
-                    </div>
-                </div>
-            </div>
 
             <nav className="flex-1 overflow-y-auto py-2 px-2 custom-scrollbar space-y-1">
                 {filteredNavItems.map((item) => (
@@ -142,7 +110,7 @@ const Sidebar: React.FC<SidebarProps> = ({ isOpen, onClose }) => {
                 ))}
             </nav>
 
-            <div className="p-6">
+            <div className="p-6 space-y-3">
                 <div className="bg-gradient-to-br from-white/80 to-white/40 backdrop-blur-sm rounded-3xl p-4 shadow-sm border border-white">
                     <div className="flex items-center">
                         <div className="h-10 w-10 rounded-full bg-cute-secondary/20 flex items-center justify-center text-cute-secondary font-bold text-lg mr-3 border-2 border-white">
@@ -150,10 +118,20 @@ const Sidebar: React.FC<SidebarProps> = ({ isOpen, onClose }) => {
                         </div>
                         <div>
                             <p className="font-bold text-gray-700 text-sm">{currentUser.fullName}</p>
-                            <p className="text-xs text-gray-400 font-medium">{currentUser.role !== UserRole.Admin && currentUser.classId ? `Class ID: ${currentUser.classId}` : 'Administrator'}</p>
+                            <p className="text-xs text-gray-400 font-medium">{currentUser.role === UserRole.Admin ? 'Administrator' : `Role: ${currentUser.role}`}</p>
                         </div>
                     </div>
                 </div>
+
+                <button
+                    onClick={handleLogout}
+                    className="w-full flex items-center justify-center px-6 py-3 rounded-2xl bg-red-50 text-red-500 font-bold hover:bg-red-100 transition-all duration-300 active:scale-95 group"
+                >
+                    <svg xmlns="http://www.w3.org/2000/svg" className="h-5 w-5 mr-2 group-hover:translate-x-1 transition-transform" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M17 16l4-4m0 0l-4-4m4 4H7m6 4v1a3 3 0 01-3 3H6a3 3 0 01-3-3V7a3 3 0 013-3h4a3 3 0 013 3v1" />
+                    </svg>
+                    登出系統
+                </button>
             </div>
         </aside>
     );

@@ -34,6 +34,10 @@ apiClient.interceptors.response.use(
                 case 401:
                     // Handle unauthorized - redirect to login
                     console.error('Unauthorized - please login');
+                    if (!window.location.pathname.includes('/login')) {
+                        localStorage.removeItem('edu_user_id');
+                        window.location.href = '/login';
+                    }
                     break;
                 case 403:
                     console.error('Forbidden - access denied');
