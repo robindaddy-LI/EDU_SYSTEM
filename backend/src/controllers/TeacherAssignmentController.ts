@@ -5,11 +5,15 @@ export const TeacherAssignmentController = {
     // Get all teacher assignments, optionally filtered by academic year
     async getAll(req: Request, res: Response) {
         try {
-            const { academicYear } = req.query;
+            const { academicYear, classId } = req.query;
             const where: any = {};
 
             if (academicYear) {
                 where.academicYear = academicYear as string;
+            }
+
+            if (classId) {
+                where.classId = Number(classId);
             }
 
             const assignments = await prisma.teacherClassAssignment.findMany({

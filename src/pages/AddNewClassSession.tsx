@@ -170,8 +170,8 @@ const AddNewClassSession: React.FC = () => {
 
                 console.log(`Fetching assignments for Academic Year: ${academicYear}, ClassId: ${numericClassId}`);
 
-                const allAssignments = await teacherAssignmentService.getAll(academicYear);
-                const classAssignments = allAssignments.filter(a => a.classId === numericClassId);
+                // Optimized: Filter by classId on backend
+                const classAssignments = await teacherAssignmentService.getAll(academicYear, numericClassId);
                 const teachers = classAssignments
                     .map(a => a.teacher)
                     .filter((t): t is Teacher => t !== undefined) as Teacher[];

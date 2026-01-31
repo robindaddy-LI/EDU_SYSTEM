@@ -35,9 +35,12 @@ export interface BatchAssignmentData {
 }
 
 export const teacherAssignmentService = {
-    // Get all assignments, optionally filtered by academic year
-    async getAll(academicYear?: string): Promise<TeacherAssignment[]> {
-        const params = academicYear ? { academicYear } : {};
+    // Get all assignments, optionally filtered by academic year and class
+    async getAll(academicYear?: string, classId?: number): Promise<TeacherAssignment[]> {
+        const params: any = {};
+        if (academicYear) params.academicYear = academicYear;
+        if (classId) params.classId = classId;
+
         const response = await apiClient.get('/teacher-assignments', { params });
         return response.data;
     },
