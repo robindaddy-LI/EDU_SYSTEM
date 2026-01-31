@@ -19,6 +19,7 @@ import EditStudent from './pages/EditStudent';
 import AddNewTeacher from './pages/AddNewTeacher';
 import EditTeacher from './pages/EditTeacher';
 import Login from './pages/Login';
+import TeacherAssignmentConfig from './pages/TeacherAssignmentConfig';
 
 const ProtectedLayout: React.FC = () => {
     const { currentUser, isLoading } = useAuth();
@@ -81,6 +82,7 @@ const App: React.FC = () => {
                         <Route path="/teachers/new" element={<AddNewTeacher />} />
                         <Route path="/teachers/:id" element={<TeacherDetail />} />
                         <Route path="/teachers/:id/edit" element={<EditTeacher />} />
+                        <Route path="/teacher-assignments" element={<TeacherAssignmentConfig />} />
                         <Route path="/students" element={<StudentManagement />} />
                         <Route path="/students/new" element={<AddNewStudent />} />
                         <Route path="/students/:id" element={<StudentDetail />} />

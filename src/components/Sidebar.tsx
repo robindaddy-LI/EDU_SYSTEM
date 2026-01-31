@@ -1,8 +1,8 @@
 
 import React, { useMemo } from 'react';
-import { NavLink, useNavigate } from 'react-router-dom';
-import { UserRole } from '../types';
+import { NavLink, useNavigate, useLocation, Link } from 'react-router-dom';
 import { useAuth } from '../AuthContext';
+import { UserRole } from '../types';
 
 
 interface SidebarProps {
@@ -23,7 +23,7 @@ const allNavItems = [
 ];
 
 const Sidebar: React.FC<SidebarProps> = ({ isOpen, onClose }) => {
-    const { currentUser, logout } = useAuth();
+    const { currentUser, logout, isAdmin } = useAuth();
     const navigate = useNavigate();
     const [availableUsers, setAvailableUsers] = React.useState<{ [key in UserRole]?: import('../types').User }>({});
 
@@ -121,6 +121,17 @@ const Sidebar: React.FC<SidebarProps> = ({ isOpen, onClose }) => {
                             <p className="text-xs text-gray-400 font-medium">{currentUser.role === UserRole.Admin ? 'Administrator' : `Role: ${currentUser.role}`}</p>
                         </div>
                     </div>
+                    {isAdmin && (
+                        <Link
+                            to="/teacher-assignments"
+                            className="block px-4 py-2 mt-3 text-sm text-gray-600 hover:bg-white/80 hover:text-cute-primary rounded-2xl transition-all duration-300 font-bold"
+                            onClick={() => {
+                                if (window.innerWidth < 768) onClose();
+                            }}
+                        >
+                            年度教員指派
+                        </Link>
+                    )}
                 </div>
 
                 <button
