@@ -20,7 +20,7 @@ const StudentManagement: React.FC = () => {
             try {
                 const classes = await classService.getAll();
                 const newClassesMap = new Map<number, string>();
-                classes.forEach(cls => newClassesMap.set(cls.id, cls.className));
+                classes.forEach(cls => newClassesMap.set(cls.id, cls.name));
                 setClassesMap(newClassesMap);
             } catch (err) {
                 console.error('Failed to fetch classes:', err);

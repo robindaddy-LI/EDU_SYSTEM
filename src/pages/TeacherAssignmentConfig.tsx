@@ -2,6 +2,7 @@ import React, { useState, useEffect } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { Teacher, Class } from '../types';
 import { teacherService, classService, teacherAssignmentService } from '../services';
+import { getAcademicYear, getAcademicYearOptions } from '../utils/academicYear';
 
 interface AssignmentRow {
     classId: number;
@@ -15,7 +16,7 @@ interface AssignmentRow {
 
 const TeacherAssignmentConfig: React.FC = () => {
     const navigate = useNavigate();
-    const [academicYear, setAcademicYear] = useState<string>(new Date().getFullYear().toString());
+    const [academicYear, setAcademicYear] = useState<string>(getAcademicYear());
     const [classes, setClasses] = useState<Class[]>([]);
     const [teachers, setTeachers] = useState<Teacher[]>([]);
     const [assignments, setAssignments] = useState<AssignmentRow[]>([]);
@@ -58,7 +59,7 @@ const TeacherAssignmentConfig: React.FC = () => {
                     const classAssignments = assignmentData.filter(a => a.classId === cls.id);
                     return {
                         classId: cls.id,
-                        className: cls.className,
+                        name: cls.className, // Assuming Class type has className, mapping it to 'name' for AssignmentRow
                         teachers: classAssignments.map(a => ({
                             teacherId: a.teacherId,
                             fullName: a.teacher?.fullName || 'Unknown',
@@ -181,8 +182,8 @@ const TeacherAssignmentConfig: React.FC = () => {
                             onChange={(e) => setAcademicYear(e.target.value)}
                             className="border rounded-md px-3 py-1.5 focus:ring-2 focus:ring-church-blue-500"
                         >
-                            {[2024, 2025, 2026, 2027].map(year => (
-                                <option key={year} value={year}>{year}</option>
+                            {getAcademicYearOptions().map(year => (
+                                <option key={year} value={year}>{year} ({year}-{year + 1})</option>
                             ))}
                         </select>
                     </div>
@@ -215,7 +216,7 @@ const TeacherAssignmentConfig: React.FC = () => {
                 {assignments.map(row => (
                     <div key={row.classId} className="bg-white rounded-lg shadow-md border p-5 flex flex-col h-full">
                         <h3 className="text-xl font-bold text-gray-800 mb-4 pb-2 border-b">
-                            {row.className}
+                            {row.name}
                         </h3>
 
                         <div className="flex-grow space-y-3 mb-4">

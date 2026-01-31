@@ -26,11 +26,23 @@ I have successfully started the database, backend, and frontend servers for the 
 - **Security**: Implemented role-based navigation filtering and removed the mock "Demo Mode" switcher.
 - **Logout**: Added a dedicated "Logout" button to the sidebar for secure session termination.
 
+### 5. Feature Implementation: Teacher Assignment & Class Logbook
+- **Teacher Assignment**:
+    - Implemented `TeacherAssignmentConfig.tsx` for managing yearly teacher allocations.
+    - Added backend support for creating and viewing assignments.
+    - Integrated with Sidebar and Teacher Management views.
+- **Class Logbook Refactor**:
+    - **Refactoring**: Split the monolithic `ClassLogbook.tsx` into `DashboardView`, `ListView`, and `DetailView`.
+    - **Optimization**: Updated `TeacherAssignmentController` to support server-side filtering by `classId` to prevent over-fetching.
+    - **Integration**: Updated `AddNewClassSession` to use the optimized API.
+
 ## Verification Results
 
 - **Backend Health Check**: Confirmed "Education System API is running!" at port 3000.
 - **Authentication**: Verified real API login with test accounts.
 - **Authorization**: Confirmed Sidebar menu items change based on user roles.
+- **Teacher Assignment**: Verified admin can assign teachers to classes.
+- **Class Logbook**: Verified efficient loading of teacher lists when creating sessions.
 
 > [!TIP]
 > 您現在可以使用 **admin/admin**, **teacher1/teacher1**, 或 **recorder1/recorder1** 登入 [http://localhost:5174](http://localhost:5174) 進行測試。

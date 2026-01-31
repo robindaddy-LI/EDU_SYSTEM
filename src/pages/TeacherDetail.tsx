@@ -73,7 +73,7 @@ const TeacherDetail: React.FC = () => {
                             if (!groupedAssignments[year].some(c => c.id === assignment.classId)) {
                                 groupedAssignments[year].push({
                                     id: assignment.classId,
-                                    className: assignment.class.name, // Mapping backend 'name' to frontend 'className'
+                                    name: assignment.class.name,
                                     mainTeacher: mainTeacherName
                                 } as AssignedClassInfo);
                             }
@@ -198,7 +198,7 @@ const TeacherDetail: React.FC = () => {
                 <div className="p-6 sm:p-8">
                     <h2 className="text-xl font-semibold text-gray-700 mb-4">聯絡方式</h2>
                     <dl className="grid grid-cols-1 md:grid-cols-2 gap-x-6 gap-y-6">
-                        {renderDetailItem('電話', teacher.phoneNumber)}
+                        {renderDetailItem('電話', teacher.phone)}
                         {renderDetailItem('電子郵件', teacher.email)}
                     </dl>
                 </div>
@@ -218,7 +218,7 @@ const TeacherDetail: React.FC = () => {
                                             <li key={cls.id} className="p-3 bg-gray-50 rounded-md flex items-center">
                                                 <svg xmlns="http://www.w3.org/2000/svg" className="h-6 w-6 mr-3 text-church-blue-500" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M17 20h5v-2a3 3 0 00-5.356-1.857M17 20H7m10 0v-2c0-.656-.126-1.283-.356-1.857M7 20H2v-2a3 3 0 015.356-1.857M7 20v-2c0-.656.126-1.283.356-1.857m0 0a3.002 3.002 0 01-3.71-1.29l-1.123-1.945A3 3 0 012 8.324V6c0-1.105.895-2 2-2h12c1.105 0 2 .895 2 2v2.324a3 3 0 01-1.88 2.775l-1.123 1.945a3.002 3.002 0 01-3.71 1.29m-3.71-1.29a3.002 3.002 0 01-3.142 0" /></svg>
                                                 <div>
-                                                    <span className="font-medium text-gray-800">{cls.className}</span>
+                                                    <span className="font-medium text-gray-800">{cls.name}</span>
                                                     {cls.mainTeacher && (
                                                         <span className="ml-2 text-sm text-gray-500">(班負責: {cls.mainTeacher})</span>
                                                     )}

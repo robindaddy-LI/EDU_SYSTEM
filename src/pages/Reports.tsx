@@ -266,7 +266,7 @@ const TeacherListReport: React.FC = () => {
             t.fullName,
             getTeacherTypeName(t.teacherType),
             getStatusName(t.status),
-            t.phoneNumber || '',
+            t.phone || '',
             t.email || ''
         ]);
         exportToCsv('教員名冊.csv', headers, data);
@@ -308,7 +308,7 @@ const TeacherListReport: React.FC = () => {
                                         {getStatusName(teacher.status)}
                                     </span>
                                 </td>
-                                <td className="px-6 py-4 whitespace-nowrap">{teacher.phoneNumber || 'N/A'}</td>
+                                <td className="px-6 py-4 whitespace-nowrap">{teacher.phone || 'N/A'}</td>
                                 <td className="px-6 py-4 whitespace-nowrap">{teacher.email || 'N/A'}</td>
                             </tr>
                         ))}

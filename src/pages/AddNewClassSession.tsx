@@ -3,6 +3,7 @@ import React, { useState, useEffect } from 'react';
 import { useNavigate, useSearchParams } from 'react-router-dom';
 import { Class, Student, Teacher, AttendanceStatus } from '../types';
 import { classService, studentService, teacherAssignmentService, sessionService } from '../services';
+import { getAcademicYear } from '../utils/academicYear';
 
 const getUpcomingSaturday = (): string => {
     const today = new Date();
@@ -161,13 +162,8 @@ const AddNewClassSession: React.FC = () => {
 
                 // Fetch teacher assignments for current academic year mechanism
                 // Logic duplicates Settings.tsx/TeacherDetail.tsx - ideally centralize in future
-                const today = new Date();
-                const currentMonth = today.getMonth(); // 0-11
-                const currentYearNum = today.getFullYear();
-                // If month is Sep (8) or later, it's the start of new academic year
-                // If month is Jan-Aug, it belongs to the previous year's academic session
-                const academicYear = (currentMonth >= 8 ? currentYearNum : currentYearNum - 1).toString();
-
+                // Optimized Use utility for consistent logic
+                const academicYear = getAcademicYear();
                 console.log(`Fetching assignments for Academic Year: ${academicYear}, ClassId: ${numericClassId}`);
 
                 // Optimized: Filter by classId on backend
@@ -284,7 +280,7 @@ const AddNewClassSession: React.FC = () => {
                             <div className="relative">
                                 <select id="classId" value={classId} onChange={e => setClassId(e.target.value)} required className={`${formInputClass} appearance-none`}>
                                     <option value="" disabled>請選擇班級...</option>
-                                    {classes.map(cls => <option key={cls.id} value={cls.id}>{cls.className}</option>)}
+                                    {classes.map(cls => <option key={cls.id} value={cls.id}>{cls.name}</option>)}
                                 </select>
                                 <div className="pointer-events-none absolute inset-y-0 right-0 flex items-center px-4 text-gray-500">
                                     <svg className="h-5 w-5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M19 9l-7 7-7-7"></path></svg>

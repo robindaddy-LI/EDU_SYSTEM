@@ -12,7 +12,7 @@ const AddNewTeacher: React.FC = () => {
         fullName: '',
         teacherType: TeacherType.Formal,
         status: 'active' as 'active' | 'inactive',
-        phoneNumber: '',
+        phone: '',
         email: '',
         notes: '',
     });
@@ -35,7 +35,7 @@ const AddNewTeacher: React.FC = () => {
                 fullName: formData.fullName,
                 teacherType: formData.teacherType,
                 status: formData.status,
-                phoneNumber: formData.phoneNumber || undefined,
+                phone: formData.phone || undefined,
                 email: formData.email || undefined,
                 notes: formData.notes || undefined,
             };
@@ -92,8 +92,8 @@ const AddNewTeacher: React.FC = () => {
                             </select>
                         </div>
                         <div>
-                            <label htmlFor="phoneNumber" className={formLabelClass}>電話</label>
-                            <input type="tel" id="phoneNumber" name="phoneNumber" value={formData.phoneNumber} onChange={handleChange} className={formInputClass} />
+                            <label htmlFor="phone" className={formLabelClass}>電話</label>
+                            <input type="tel" id="phone" name="phone" value={formData.phone} onChange={handleChange} className={formInputClass} />
                         </div>
                         <div className="md:col-span-2">
                             <label htmlFor="email" className={formLabelClass}>電子郵件</label>

@@ -175,8 +175,8 @@ const DetailView: React.FC<{ sessionId: string }> = ({ sessionId }) => {
             const students = await studentService.getAll({ classId, status: 'active' });
             setClassStudents(students);
 
-            // Fetch teacher assignments for current year and class
-            const currentYear = new Date().getFullYear().toString();
+            // Fetch teacher assignments for current academic year
+            const currentYear = getAcademicYear();
             // Optimized query: filter by classId on backend
             const classAssignments = await teacherAssignmentService.getAll(currentYear, classId);
 

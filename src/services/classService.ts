@@ -19,9 +19,10 @@ export interface ClassDetail extends Class {
 }
 
 // Helper to map backend response to frontend Class type
+// Now frontend uses 'name' too, so we just pass it through
 const mapToClass = (data: any): ClassWithCounts => ({
     id: data.id,
-    className: data.name, // Backend uses 'name', frontend uses 'className'
+    name: data.name,
     _count: data._count
 });
 
@@ -37,18 +38,18 @@ export const classService = {
         const response = await apiClient.get(`/classes/${id}`, {
             params: academicYear ? { academicYear } : undefined
         });
-        return { ...response.data, className: response.data.name };
+        return response.data; // Backend returns 'name', which matches ClassDetail
     },
 
     // Create a new class
-    async create(data: { className: string }): Promise<Class> {
-        const response = await apiClient.post('/classes', { name: data.className });
+    async create(data: { name: string }): Promise<Class> {
+        const response = await apiClient.post('/classes', { name: data.name });
         return mapToClass(response.data);
     },
 
     // Update class
-    async update(id: number, data: { className: string }): Promise<Class> {
-        const response = await apiClient.put(`/classes/${id}`, { name: data.className });
+    async update(id: number, data: { name: string }): Promise<Class> {
+        const response = await apiClient.put(`/classes/${id}`, { name: data.name });
         return mapToClass(response.data);
     },
 

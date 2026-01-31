@@ -20,7 +20,7 @@ const TeacherManagement: React.FC = () => {
             if (isClassLead && userClassId) {
                 try {
                     const classData = await classService.getById(userClassId);
-                    setUserClassName(classData.className);
+                    setUserClassName(classData.name);
                 } catch (err) {
                     console.error('Failed to fetch class name:', err);
                 }
@@ -220,7 +220,7 @@ const TeacherManagement: React.FC = () => {
                                             <span className="text-gray-400">未分配</span>
                                         )}
                                     </td>
-                                    <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-500">{teacher.phoneNumber || 'N/A'}</td>
+                                    <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-500">{teacher.phone || 'N/A'}</td>
                                     <td className="px-6 py-4 whitespace-nowrap text-right text-sm font-medium">
                                         <Link to={`/teachers/${teacher.id}`} className="text-church-blue-600 hover:text-church-blue-900">
                                             查看詳情

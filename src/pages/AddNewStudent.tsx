@@ -24,8 +24,8 @@ const AddNewStudent: React.FC = () => {
         classId: '',
         dob: '',
         address: '',
-        emergencyContactName: '',
-        emergencyContactPhone: '',
+        contactName: '',
+        contactPhone: '',
         isBaptized: false,
         baptismDate: '',
         isSpiritBaptized: false,
@@ -179,7 +179,7 @@ const AddNewStudent: React.FC = () => {
                             <label htmlFor="classId" className={formLabelClass}>班級 <span className="text-red-500">*</span></label>
                             <select id="classId" name="classId" value={formData.classId} onChange={handleChange} required className={formInputClass}>
                                 <option value="" disabled>請選擇班級...</option>
-                                {classes.map(cls => <option key={cls.id} value={cls.id}>{cls.className}</option>)}
+                                {classes.map(cls => <option key={cls.id} value={cls.id}>{cls.name}</option>)}
                             </select>
                         </div>
                         <div>
@@ -244,12 +244,12 @@ const AddNewStudent: React.FC = () => {
                     <h2 className="text-xl font-semibold text-gray-700 border-b pb-3 mb-4">緊急聯絡人</h2>
                     <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
                         <div>
-                            <label htmlFor="emergencyContactName" className={formLabelClass}>姓名</label>
-                            <input type="text" id="emergencyContactName" name="emergencyContactName" value={formData.emergencyContactName} onChange={handleChange} className={formInputClass} />
+                            <label htmlFor="contactName" className={formLabelClass}>姓名</label>
+                            <input type="text" id="contactName" name="contactName" value={formData.contactName} onChange={handleChange} className={formInputClass} />
                         </div>
                         <div>
-                            <label htmlFor="emergencyContactPhone" className={formLabelClass}>電話</label>
-                            <input type="tel" id="emergencyContactPhone" name="emergencyContactPhone" value={formData.emergencyContactPhone} onChange={handleChange} className={formInputClass} />
+                            <label htmlFor="contactPhone" className={formLabelClass}>電話</label>
+                            <input type="tel" id="contactPhone" name="contactPhone" value={formData.contactPhone} onChange={handleChange} className={formInputClass} />
                         </div>
                     </div>
                 </div>

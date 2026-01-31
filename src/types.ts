@@ -37,7 +37,7 @@ export interface Teacher {
     fullName: string;
     teacherType: TeacherType;
     status: 'active' | 'inactive';
-    phoneNumber?: string;
+    phone?: string;
     email?: string;
     notes?: string;
 }
@@ -74,8 +74,8 @@ export interface Student {
     status: 'active' | 'inactive';
     dob?: string; // ISO date string
     address?: string;
-    emergencyContactName?: string;
-    emergencyContactPhone?: string;
+    contactName?: string;
+    contactPhone?: string;
     isBaptized: boolean;
     baptismDate?: string; // ISO date string
     isSpiritBaptized: boolean;
@@ -90,7 +90,7 @@ export interface Student {
 
 export interface Class {
     id: number;
-    className: string;
+    name: string;
 }
 
 export interface TeacherClassMap {

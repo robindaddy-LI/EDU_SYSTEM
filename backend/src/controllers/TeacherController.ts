@@ -100,7 +100,7 @@ export const TeacherController = {
             res.status(201).json(newTeacher);
         } catch (error) {
             console.error(error);
-            res.status(500).json({ error: 'Failed to create teacher' });
+            res.status(500).json({ error: 'Failed to create teacher', details: String(error) });
         }
     },
 
