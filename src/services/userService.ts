@@ -28,12 +28,15 @@ export interface UserUpdateData {
 }
 
 export interface LoginResponse {
-    id: number;
-    username: string;
-    fullName: string;
-    role: UserRole;
-    classId?: number;
-    class?: { id: number; name: string };
+    token: string;
+    user: {
+        id: number;
+        username: string;
+        fullName: string;
+        role: UserRole;
+        classId?: number;
+        class?: { id: number; name: string };
+    };
 }
 
 export const userService = {

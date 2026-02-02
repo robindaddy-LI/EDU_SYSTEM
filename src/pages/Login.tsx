@@ -8,7 +8,7 @@ const Login: React.FC = () => {
     const [password, setPassword] = useState('');
     const [error, setError] = useState('');
     const [isLoading, setIsLoading] = useState(false);
-    const { setCurrentUser } = useAuth();
+    const { login } = useAuth();
     const navigate = useNavigate();
     const location = useLocation();
 
@@ -20,12 +20,13 @@ const Login: React.FC = () => {
         setIsLoading(true);
 
         try {
-            const user = await userService.login(username, password);
+            const response = await userService.login(username, password);
 
-            if (user) {
-                // The login response might be slightly different from User type (e.g. might have class object)
-                // But AuthContext expects User. Let's cast or map it.
-                setCurrentUser(user as any);
+            if (response && response.token) {
+                // Store JWT token in localStorage
+                localStorage.setItem('edu_auth_token', response.token);
+                // Update AuthContext with user data
+                login(response.user as any);
                 navigate(from, { replace: true });
             }
         } catch (err: any) {
@@ -112,9 +113,9 @@ const Login: React.FC = () => {
                             </button>
                         </div>
                     </form>
-                </div >
-            </div >
-        </div >
+                </div>
+            </div>
+        </div>
     );
 };
 

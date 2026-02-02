@@ -1,7 +1,9 @@
 
 import { PrismaClient, UserRole, StudentType, TeacherType, AttendanceStatus } from '@prisma/client';
+import bcrypt from 'bcrypt';
 
 const prisma = new PrismaClient();
+const SALT_ROUNDS = 10;
 
 // --- MOCK DATA CONTENT (Copied for migration) ---
 
@@ -167,17 +169,20 @@ async function main() {
     }
     console.log('Seeded Classes');
 
-    // 2. Users
+    // 2. Users (with bcrypt password hashing)
     for (const user of mockUsers) {
+        // Hash the password (using username as password for testing)
+        const hashedPassword = await bcrypt.hash(user.username, SALT_ROUNDS);
+
         await prisma.user.upsert({
             where: { id: user.id },
             update: {
-                passwordHash: user.username, // For testing, password is same as username
+                passwordHash: hashedPassword, // Update to hashed password
             },
             create: {
                 id: user.id,
                 username: user.username,
-                passwordHash: user.username, // For testing, password is same as username
+                passwordHash: hashedPassword, // Securely hashed password
                 fullName: user.fullName,
                 role: user.role,
                 classId: user.classId,
@@ -186,7 +191,7 @@ async function main() {
             },
         });
     }
-    console.log('Seeded Users');
+    console.log('Seeded Users (with hashed passwords)');
 
     // 3. Teachers
     for (const t of mockTeachers) {

@@ -9,14 +9,14 @@ const apiClient = axios.create({
     timeout: 10000
 });
 
-// Request interceptor - can add auth token here
+// Request interceptor - attach JWT token to all requests
 apiClient.interceptors.request.use(
     (config) => {
-        // Add authorization header if token exists
-        // const token = localStorage.getItem('authToken');
-        // if (token) {
-        //     config.headers.Authorization = `Bearer ${token}`;
-        // }
+        // Get token from localStorage and attach to Authorization header
+        const token = localStorage.getItem('edu_auth_token');
+        if (token) {
+            config.headers.Authorization = `Bearer ${token}`;
+        }
         return config;
     },
     (error) => {
@@ -32,9 +32,10 @@ apiClient.interceptors.response.use(
         if (error.response) {
             switch (error.response.status) {
                 case 401:
-                    // Handle unauthorized - redirect to login
+                    // Handle unauthorized - clear token and redirect to login
                     console.error('Unauthorized - please login');
                     if (!window.location.pathname.includes('/login')) {
+                        localStorage.removeItem('edu_auth_token');
                         localStorage.removeItem('edu_user_id');
                         window.location.href = '/login';
                     }

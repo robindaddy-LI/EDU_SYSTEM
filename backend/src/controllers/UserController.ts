@@ -1,8 +1,12 @@
 import { Request, Response } from 'express';
+import bcrypt from 'bcrypt';
+import jwt from 'jsonwebtoken';
 import prisma from '../prisma';
 
-// Note: This is a simplified version without proper password hashing.
-// In production, use bcrypt for password hashing and JWT for authentication.
+// Bcrypt salt rounds for password hashing
+const SALT_ROUNDS = 10;
+
+// Note: Password hashing implemented with bcrypt.
 
 export const UserController = {
     // Get all users (admin only)
@@ -83,8 +87,8 @@ export const UserController = {
                 return res.status(400).json({ error: 'Username already exists' });
             }
 
-            // In production, hash the password with bcrypt
-            const passwordHash = password; // TODO: Use bcrypt.hash(password, 10)
+            // Hash password with bcrypt
+            const passwordHash = await bcrypt.hash(password, SALT_ROUNDS);
 
             const newUser = await prisma.user.create({
                 data: {
@@ -128,9 +132,9 @@ export const UserController = {
                 status
             };
 
-            // Only update password if provided
+            // Only update password if provided (hash with bcrypt)
             if (password) {
-                updateData.passwordHash = password; // TODO: Use bcrypt.hash(password, 10)
+                updateData.passwordHash = await bcrypt.hash(password, SALT_ROUNDS);
             }
 
             // Only update username if provided and different
@@ -182,7 +186,7 @@ export const UserController = {
         }
     },
 
-    // Simple login (for demo purposes - use JWT in production)
+    // Login with JWT token generation
     async login(req: Request, res: Response) {
         try {
             const { username, password } = req.body;
@@ -196,8 +200,9 @@ export const UserController = {
                 return res.status(401).json({ error: 'Invalid credentials' });
             }
 
-            // In production, compare with bcrypt.compare(password, user.passwordHash)
-            if (user.passwordHash !== password) {
+            // Compare password with stored hash using bcrypt
+            const isMatch = await bcrypt.compare(password, user.passwordHash);
+            if (!isMatch) {
                 return res.status(401).json({ error: 'Invalid credentials' });
             }
 
@@ -205,14 +210,29 @@ export const UserController = {
                 return res.status(403).json({ error: 'Account is inactive' });
             }
 
-            // In production, return a JWT token
+            // Generate JWT token
+            const token = jwt.sign(
+                {
+                    id: user.id,
+                    username: user.username,
+                    role: user.role,
+                    classId: user.classId
+                },
+                process.env.JWT_SECRET as string,
+                { expiresIn: (process.env.JWT_EXPIRES_IN || '7d') as jwt.SignOptions['expiresIn'] }
+            );
+
+            // Return token along with user data
             res.json({
-                id: user.id,
-                username: user.username,
-                fullName: user.fullName,
-                role: user.role,
-                classId: user.classId,
-                class: user.class
+                token,
+                user: {
+                    id: user.id,
+                    username: user.username,
+                    fullName: user.fullName,
+                    role: user.role,
+                    classId: user.classId,
+                    class: user.class
+                }
             });
         } catch (error) {
             console.error(error);
