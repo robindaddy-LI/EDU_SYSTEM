@@ -1,28 +1,5 @@
-import axios from 'axios';
-
-const API_BASE_URL = '/api/v1';
-
-export interface StudentAttendanceRecord {
-    id: number;
-    sessionId: number;
-    studentId: number;
-    status: 'present' | 'absent' | 'late' | 'excused';
-    reason?: string | null;
-    student?: {
-        id: number;
-        fullName: string;
-        studentType: string;
-    };
-    session?: {
-        id: number;
-        date: Date | string;
-        sessionType: string;
-        class: {
-            id: number;
-            name: string;
-        };
-    };
-}
+import apiClient from './api';
+import { StudentAttendanceRecord } from '../types';
 
 export interface StudentAttendanceUpsertDto {
     sessionId: number;
@@ -46,28 +23,29 @@ export const studentAttendanceService = {
         studentId?: number;
         status?: string;
     }): Promise<StudentAttendanceRecord[]> {
-        const response = await axios.get(`${API_BASE_URL}/student-attendance`, { params });
+        const response = await apiClient.get('/student-attendance', { params });
         return response.data;
     },
 
     async getById(id: number): Promise<StudentAttendanceRecord> {
-        const response = await axios.get(`${API_BASE_URL}/student-attendance/${id}`);
+        const response = await apiClient.get(`/student-attendance/${id}`);
         return response.data;
     },
 
     async upsert(data: StudentAttendanceUpsertDto): Promise<StudentAttendanceRecord> {
-        const response = await axios.post(`${API_BASE_URL}/student-attendance`, data);
+        const response = await apiClient.post('/student-attendance', data);
         return response.data;
     },
 
     async batchUpsert(data: StudentAttendanceBatchDto): Promise<{ success: boolean; count: number; message: string }> {
-        const response = await axios.post(`${API_BASE_URL}/student-attendance/batch`, data);
+        const response = await apiClient.post('/student-attendance/batch', data);
         return response.data;
     },
 
     async delete(id: number): Promise<void> {
-        await axios.delete(`${API_BASE_URL}/student-attendance/${id}`);
+        await apiClient.delete(`/student-attendance/${id}`);
     }
 };
 
 export default studentAttendanceService;
+

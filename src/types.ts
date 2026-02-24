@@ -1,4 +1,6 @@
 
+// ==================== Enums ====================
+
 export enum UserRole {
     Admin = 'admin',
     Teacher = 'teacher', // 對應班負責
@@ -22,6 +24,13 @@ export enum AttendanceStatus {
     Excused = 'excused',
 }
 
+export enum UserStatus {
+    Active = 'active',
+    Inactive = 'inactive',
+}
+
+// ==================== Models ====================
+
 export interface User {
     id: number;
     username: string;
@@ -29,7 +38,7 @@ export interface User {
     role: UserRole;
     classId?: number;
     email?: string;
-    status?: 'active' | 'inactive';
+    status: UserStatus;
 }
 
 export interface Teacher {
@@ -50,17 +59,7 @@ export interface EnrollmentHistory {
     studentId: number;
 }
 
-export interface StudentAttendanceRecord {
-    id: number;
-    status: AttendanceStatus;
-    reason?: string; // New field for absence reason
-    sessionId: number;
-    studentId: number;
-    sessionDate: string;
-    sessionType: string; // e.g., 'Sabbath School', 'Weekday Service'
-}
-
-// New interface for manual historical data
+// Manual historical attendance data (stored as JSON in DB)
 export interface HistoricalAttendance {
     rowLabel: string; // e.g. "第一年"
     className: string; // e.g. "幼兒班"
@@ -81,11 +80,11 @@ export interface Student {
     isSpiritBaptized: boolean;
     spiritBaptismDate?: string; // ISO date string
     classId: number;
-    notes?: string; // Important notes
+    notes?: string;
     enrollmentHistory?: EnrollmentHistory[];
     attendanceRecords?: StudentAttendanceRecord[];
-    historicalAttendance?: HistoricalAttendance[]; // Added field
-    class?: { id: number; name: string }; // Raw relation from API
+    historicalAttendance?: HistoricalAttendance[];
+    class?: { id: number; name: string }; // Nested relation from API
 }
 
 export interface Class {
@@ -93,17 +92,9 @@ export interface Class {
     name: string;
 }
 
-export interface TeacherClassMap {
-    id: number;
-    academicYear: string;
-    teacherId: number;
-    classId: number;
-    isLead?: boolean;
-}
-
 export interface ClassSession {
     id: number;
-    sessionDate: string; // ISO date string
+    date: string; // ISO date string (對應 Prisma: date DateTime)
     sessionType: string;
     auditorCount: number;
     offeringAmount: number;
@@ -113,29 +104,78 @@ export interface ClassSession {
     worshipTeacherName?: string;
     activityTopic?: string;
     activityTeacherName?: string;
-    isCancelled?: boolean;
+    isCancelled: boolean;
     cancellationReason?: string;
+    // Nested relations (included when API returns with includes)
+    studentAttendance?: Array<{
+        id: number;
+        studentId: number;
+        status: string;
+        reason?: string | null;
+    }>;
+    teacherAttendance?: Array<{
+        id: number;
+        teacherId: number;
+        status: string;
+        reason?: string | null;
+    }>;
+}
+
+export interface StudentAttendanceRecord {
+    id: number;
+    sessionId: number;
+    studentId: number;
+    status: AttendanceStatus;
+    reason?: string | null;
+    student?: {
+        id: number;
+        fullName: string;
+        studentType: string;
+    };
+    session?: {
+        id: number;
+        date: Date | string;
+        sessionType: string;
+        class: {
+            id: number;
+            name: string;
+        };
+    };
 }
 
 export interface TeacherAttendanceRecord {
     id: number;
-    status: AttendanceStatus;
-    reason?: string; // New field for absence reason
     sessionId: number;
     teacherId: number;
-}
-
-
-export interface AttendanceStatusWeight {
-    status_key: AttendanceStatus;
-    status_name: string;
-    weight: number;
+    status: AttendanceStatus;
+    reason?: string | null;
+    teacher?: {
+        id: number;
+        fullName: string;
+        teacherType: string;
+    };
+    session?: {
+        id: number;
+        date: Date | string;
+        sessionType: string;
+        class: {
+            id: number;
+            name: string;
+        };
+    };
 }
 
 export interface OperationLog {
     id: number;
-    timestamp: string; // ISO date string
+    timestamp: Date | string;
     type: string; // e.g., '學年升班', '資料匯入'
     description: string;
-    user: string; // User who performed the action
+    userId: number | null;
+    metadata?: Record<string, unknown>;
+    createdAt: Date | string;
+    user?: {
+        id: number;
+        fullName: string;
+        username: string;
+    };
 }

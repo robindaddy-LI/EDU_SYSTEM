@@ -105,7 +105,7 @@ const Dashboard: React.FC = () => {
 
     const recentSessions = useMemo(() =>
         [...sessionsToShow]
-            .sort((a, b) => new Date(b.sessionDate).getTime() - new Date(a.sessionDate).getTime())
+            .sort((a, b) => new Date(b.date).getTime() - new Date(a.date).getTime())
             .slice(0, 5),
         [sessionsToShow]);
 
@@ -227,7 +227,7 @@ const Dashboard: React.FC = () => {
                                             </div>
                                             <div className="text-right">
                                                 <div className="bg-white px-2 py-1 rounded-lg shadow-sm border border-gray-100">
-                                                    <p className="text-xs font-bold text-gray-500">{session.sessionDate}</p>
+                                                    <p className="text-xs font-bold text-gray-500">{session.date}</p>
                                                 </div>
                                             </div>
                                         </div>

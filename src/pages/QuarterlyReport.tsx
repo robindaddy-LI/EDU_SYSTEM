@@ -139,8 +139,8 @@ const QuarterlyReport: React.FC = () => {
 
                 const sessionsForClassInYear = sessions.filter(s =>
                     s.classId === cls.id &&
-                    s.sessionDate >= academicYearStartStr &&
-                    s.sessionDate <= academicYearEndStr
+                    s.date >= academicYearStartStr &&
+                    s.date <= academicYearEndStr
                 );
 
                 const sessionIdsForClassInYear = new Set(sessionsForClassInYear.map(s => s.id));
@@ -163,12 +163,12 @@ const QuarterlyReport: React.FC = () => {
             // --- 2. Process Weekly Data (Date format corrected) ---
             const allSaturdays = getSaturdaysInQuarter(gregorianYear, selectedQuarter);
 
-            const sessionsByDate = new Map<string, any[]>();
+            const sessionsByDate = new Map<string, ClassSession[]>();
             sessions.forEach(s => {
-                if (!sessionsByDate.has(s.sessionDate)) {
-                    sessionsByDate.set(s.sessionDate, []);
+                if (!sessionsByDate.has(s.date)) {
+                    sessionsByDate.set(s.date, []);
                 }
-                sessionsByDate.get(s.sessionDate)!.push(s);
+                sessionsByDate.get(s.date)!.push(s);
             });
 
             const toYyyyMmDd = (date: Date): string => {

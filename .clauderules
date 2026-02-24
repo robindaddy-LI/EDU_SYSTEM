@@ -1,0 +1,132 @@
+# EDU_SYSTEM Project Rules
+# 石牌教會宗教教育股學籍及班級紀錄系統
+# Tech Stack: React 19 + Vite + TypeScript (Frontend) | Express + Prisma + TypeScript (Backend)
+
+---
+
+## 1. TypeScript 嚴格型別規範
+
+- **禁止使用 `any` 型別**。所有變數、參數、回傳值都必須明確標註型別。
+- 若型別暫時無法確定，使用 `unknown` 並搭配型別守衛（type guard）進行窄化。
+- 共用型別定義統一放在 `src/types.ts`（前端）或對應的型別檔案中，不得在元件內部隨意定義。
+- Prisma 產生的型別（如 `Prisma.StudentCreateInput`）應優先使用，避免重複定義。
+
+```typescript
+// ❌ 禁止
+const data: any = await response.json();
+function handle(e: any) { ... }
+
+// ✅ 正確
+const data: StudentResponse = await response.json();
+function handle(e: React.ChangeEvent<HTMLInputElement>) { ... }
+```
+
+---
+
+## 2. API 請求封裝規範
+
+- **所有 API 請求必須封裝在 `src/services/` 目錄內**，嚴禁在元件（components）或頁面（pages）中直接使用 `axios` 或 `fetch`。
+- 所有 service 必須使用 `src/services/api.ts` 中的 axios 實例（已配置 baseURL 與 JWT interceptor）。
+- 每個資源領域對應一個 service 檔案（例如 `studentService.ts`、`teacherService.ts`）。
+- Service 函式必須有明確的輸入參數型別與回傳值型別。
+
+```
+src/services/
+├── api.ts                       # Axios 實例與攔截器
+├── index.ts                     # 統一匯出
+├── studentService.ts            # 學生相關 API
+├── teacherService.ts            # 教師相關 API
+├── classService.ts              # 班級相關 API
+├── sessionService.ts            # 上課場次相關 API
+├── userService.ts               # 使用者帳號相關 API
+├── studentAttendanceService.ts  # 學生出席 API
+├── teacherAttendanceService.ts  # 教師出席 API
+├── teacherAssignmentService.ts  # 教師指派 API
+├── operationLogService.ts       # 操作紀錄 API
+└── statisticsService.ts         # 統計資料 API
+```
+
+```typescript
+// ❌ 禁止：在元件中直接呼叫 API
+// src/pages/StudentManagement.tsx
+import axios from 'axios';
+const res = await axios.get('/api/students');
+
+// ✅ 正確：透過 service 層呼叫
+// src/pages/StudentManagement.tsx
+import { studentService } from '../services';
+const students = await studentService.getAll();
+```
+
+---
+
+## 3. 開發流程規範
+
+### 3.1 新功能開發必須先產出實作計畫
+
+在開發任何新功能或進行重大重構之前，**必須先建立實作計畫文件**，內容需包含：
+
+1. **功能概述**：要解決的問題與目標
+2. **影響範圍**：列出會新增、修改、刪除的檔案
+3. **資料模型變更**：是否需要修改 `prisma/schema.prisma`
+4. **API 端點設計**：新增或修改的路由與 Controller
+5. **前端變更**：涉及的頁面、元件與 Service
+6. **驗證計畫**：如何測試與驗證功能正確性
+
+實作計畫必須經過確認後才能開始寫程式碼。
+
+### 3.2 Git Commit 規範
+
+使用中文撰寫 commit message，格式如下：
+
+```
+<類型>: <簡要描述>
+
+<詳細說明（選填）>
+```
+
+類型包含：`feat`（新功能）、`fix`（修復）、`refactor`（重構）、`docs`（文件）、`style`（樣式）、`chore`（雜項）。
+
+---
+
+## 4. 專案結構規範
+
+```
+EDU_SYSTEM/
+├── src/                    # 前端原始碼 (React 19 + Vite)
+│   ├── components/         # 可重用元件
+│   ├── pages/              # 頁面元件（對應路由）
+│   ├── services/           # API 請求封裝層（唯一允許呼叫 API 的位置）
+│   ├── utils/              # 工具函式
+│   ├── types.ts            # 共用型別定義
+│   ├── AuthContext.tsx      # 認證狀態管理
+│   ├── App.tsx             # 路由與版面配置
+│   └── index.tsx           # 應用程式進入點
+├── backend/                # 後端原始碼 (Express + Prisma)
+│   ├── prisma/             # Prisma Schema 與 Seed
+│   │   ├── schema.prisma   # 資料模型定義
+│   │   └── seed.ts         # 種子資料
+│   └── src/
+│       ├── controllers/    # 控制器（處理業務邏輯）
+│       ├── routes/         # 路由定義
+│       ├── middleware/     # 中介軟體（認證等）
+│       ├── prisma.ts       # Prisma Client 實例
+│       └── index.ts        # 伺服器進入點
+└── docs/                   # 專案文件與更新紀錄
+```
+
+---
+
+## 5. 後端開發規範
+
+- 路由定義放在 `backend/src/routes/`，業務邏輯放在 `backend/src/controllers/`。
+- Prisma Client 統一從 `backend/src/prisma.ts` 匯入，不得在其他地方重複建立實例。
+- 所有需要認證的路由必須使用 `backend/src/middleware/auth.ts` 中的認證中介軟體。
+- 資料庫結構變更必須透過 Prisma Migration（`prisma migrate dev`）執行，禁止直接操作資料庫。
+
+---
+
+## 6. 文件紀錄規範
+
+- 每次重大功能更新後，必須在 `docs/` 目錄下新增或更新對應的更新紀錄。
+- 文件命名格式：`YYYY-MM-DD_描述.md`（例如 `2026-01-31_Update_Summary.md`）。

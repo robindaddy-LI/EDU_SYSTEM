@@ -20,7 +20,7 @@ export interface ClassDetail extends Class {
 
 // Helper to map backend response to frontend Class type
 // Now frontend uses 'name' too, so we just pass it through
-const mapToClass = (data: any): ClassWithCounts => ({
+const mapToClass = (data: { id: number; name: string; _count?: { students: number; classSessions: number } }): ClassWithCounts => ({
     id: data.id,
     name: data.name,
     _count: data._count

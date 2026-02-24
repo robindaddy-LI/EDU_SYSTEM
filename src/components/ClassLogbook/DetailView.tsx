@@ -363,7 +363,7 @@ const DetailView: React.FC<{ sessionId: string }> = ({ sessionId }) => {
                             </Link>
                             <h2 className="text-3xl font-black text-gray-800 mb-1">{className} 紀錄簿</h2>
                             <p className="text-gray-500 font-bold flex items-center mt-2">
-                                <span className="bg-gray-100 px-3 py-1 rounded-lg text-sm mr-2">{session.sessionDate}</span>
+                                <span className="bg-gray-100 px-3 py-1 rounded-lg text-sm mr-2">{session.date}</span>
                                 <span className="bg-cute-primary/10 text-cute-primary px-3 py-1 rounded-lg text-sm">{session.sessionType}</span>
                             </p>
                         </div>

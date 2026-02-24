@@ -31,7 +31,7 @@ const ListView: React.FC<{ classId: string }> = ({ classId }) => {
 
                 // Fetch sessions
                 const sessionData = await sessionService.getAll({ classId: numericClassId });
-                setSessions(sessionData.sort((a, b) => new Date(b.sessionDate).getTime() - new Date(a.sessionDate).getTime()));
+                setSessions(sessionData.sort((a, b) => new Date(b.date).getTime() - new Date(a.date).getTime()));
             } catch (err) {
                 console.error('Failed to fetch data:', err);
                 setError('無法載入資料');
@@ -85,8 +85,8 @@ const ListView: React.FC<{ classId: string }> = ({ classId }) => {
                             <div className="flex items-center justify-between">
                                 <div className="flex items-center space-x-5">
                                     <div className="text-center bg-gray-50 rounded-2xl p-3 min-w-[80px] border border-gray-100">
-                                        <div className="text-xs font-black text-gray-400 uppercase tracking-wider">{new Date(session.sessionDate).toLocaleDateString('en-US', { month: 'short' })}</div>
-                                        <div className="text-2xl font-black text-gray-700">{new Date(session.sessionDate).getDate()}</div>
+                                        <div className="text-xs font-black text-gray-400 uppercase tracking-wider">{new Date(session.date).toLocaleDateString('en-US', { month: 'short' })}</div>
+                                        <div className="text-2xl font-black text-gray-700">{new Date(session.date).getDate()}</div>
                                     </div>
                                     <div>
                                         <h3 className="font-bold text-lg text-gray-800 group-hover:text-cute-primary transition-colors">
