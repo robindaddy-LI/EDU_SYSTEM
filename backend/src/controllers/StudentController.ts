@@ -1,5 +1,7 @@
 import { Request, Response } from 'express';
 import prisma from '../prisma';
+import { AuthRequest } from '../middleware/auth';
+import { createAuditLog, diffFields } from '../utils/auditLog';
 
 export const StudentController = {
     // Get all students with optional filtering
@@ -88,9 +90,17 @@ export const StudentController = {
     },
 
     // Update student
-    async updateStudent(req: Request, res: Response) {
+    async updateStudent(req: AuthRequest, res: Response) {
         try {
             const { id } = req.params;
+            const studentId = Number(id);
+
+            // 取得修改前的資料（用於 diff）
+            const before = await prisma.student.findUnique({ where: { id: studentId } });
+            if (!before) {
+                return res.status(404).json({ error: 'Student not found' });
+            }
+
             const {
                 fullName, studentType, classId, status,
                 dob, address, contactName, contactPhone,
@@ -99,7 +109,7 @@ export const StudentController = {
             } = req.body;
 
             const updated = await prisma.student.update({
-                where: { id: Number(id) },
+                where: { id: studentId },
                 data: {
                     fullName,
                     studentType,
@@ -119,6 +129,23 @@ export const StudentController = {
                 }
             });
 
+            // 審計記錄（fire-and-forget）
+            const changes = diffFields(
+                before as unknown as Record<string, unknown>,
+                updated as unknown as Record<string, unknown>,
+                ['fullName', 'studentType', 'classId', 'status', 'dob', 'address',
+                    'contactName', 'contactPhone', 'isBaptized', 'baptismDate',
+                    'isSpiritBaptized', 'spiritBaptismDate', 'notes']
+            );
+            if (Object.keys(changes).length > 0) {
+                createAuditLog({
+                    type: '學生修改',
+                    description: `修改學生「${updated.fullName}」(ID: ${studentId})`,
+                    userId: req.user?.id ?? null,
+                    metadata: { studentId, changes },
+                });
+            }
+
             res.json(updated);
         } catch (error) {
             console.error(error);
@@ -127,13 +154,22 @@ export const StudentController = {
     },
 
     // Delete student (soft delete by setting status to inactive)
-    async deleteStudent(req: Request, res: Response) {
+    async deleteStudent(req: AuthRequest, res: Response) {
         try {
             const { id } = req.params;
+            const studentId = Number(id);
 
             const updated = await prisma.student.update({
-                where: { id: Number(id) },
+                where: { id: studentId },
                 data: { status: 'inactive' }
+            });
+
+            // 審計記錄（fire-and-forget）
+            createAuditLog({
+                type: '學生刪除',
+                description: `停用學生「${updated.fullName}」(ID: ${studentId})`,
+                userId: req.user?.id ?? null,
+                metadata: { studentId, studentName: updated.fullName, action: 'soft_delete' },
             });
 
             res.json({ success: true, message: 'Student deactivated', student: updated });
@@ -198,7 +234,7 @@ export const StudentController = {
     },
 
     // Resolve duplicates (Merge or Delete)
-    async resolveDuplicates(req: Request, res: Response) {
+    async resolveDuplicates(req: AuthRequest, res: Response) {
         try {
             const { action, keepId, mergeIds, deleteIds } = req.body;
             // action: 'merge' | 'delete'
@@ -223,11 +259,9 @@ export const StudentController = {
 
                     for (const source of sourceStudents) {
                         if (source.enrollmentHistory && Array.isArray(source.enrollmentHistory)) {
-                            // Append source history
                             mergedEnrollment = [...mergedEnrollment, ...(source.enrollmentHistory as any[])];
                         }
                         if (source.historicalAttendance && Array.isArray(source.historicalAttendance)) {
-                            // Append source history
                             mergedHistorical = [...mergedHistorical, ...(source.historicalAttendance as any[])];
                         }
                     }
@@ -254,12 +288,10 @@ export const StudentController = {
 
                     for (const record of sourceAttendance) {
                         if (targetSessionIds.has(record.sessionId)) {
-                            // Conflict: Delete source record
                             await tx.studentAttendance.delete({
                                 where: { id: record.id }
                             });
                         } else {
-                            // No conflict: Move record
                             await tx.studentAttendance.update({
                                 where: { id: record.id },
                                 data: { studentId: targetId }
@@ -274,6 +306,14 @@ export const StudentController = {
                     });
                 });
 
+                // 審計記錄（fire-and-forget）
+                createAuditLog({
+                    type: '學生合併',
+                    description: `合併 ${sourceIds.length} 筆學生至 ID ${targetId}`,
+                    userId: req.user?.id ?? null,
+                    metadata: { action: 'merge', keepId: targetId, mergedIds: sourceIds },
+                });
+
                 res.json({ success: true, message: `Successfully merged ${sourceIds.length} students into ID ${targetId}` });
 
             } else if (action === 'delete') {
@@ -284,15 +324,21 @@ export const StudentController = {
                 const idsToDelete = deleteIds.map((id: any) => Number(id));
 
                 await prisma.$transaction(async (tx) => {
-                    // Attendance is relational, must be deleted
                     await tx.studentAttendance.deleteMany({
                         where: { studentId: { in: idsToDelete } }
                     });
 
-                    // EnrollmentHistory is part of Student JSON, so just deleting Student is enough.
                     await tx.student.deleteMany({
                         where: { id: { in: idsToDelete } }
                     });
+                });
+
+                // 審計記錄（fire-and-forget）
+                createAuditLog({
+                    type: '學生刪除',
+                    description: `刪除 ${idsToDelete.length} 筆重複學生`,
+                    userId: req.user?.id ?? null,
+                    metadata: { action: 'hard_delete', deletedIds: idsToDelete },
                 });
 
                 res.json({ success: true, message: `Successfully deleted ${idsToDelete.length} duplicate students` });
@@ -306,7 +352,7 @@ export const StudentController = {
     }
     ,
     // Batch Import with Smart Merge
-    async batchImport(req: Request, res: Response) {
+    async batchImport(req: AuthRequest, res: Response) {
         try {
             const { students } = req.body; // Expects array of students
             if (!Array.isArray(students)) {
@@ -317,13 +363,8 @@ export const StudentController = {
             let mergedCount = 0;
             let errorCount = 0;
 
-            // Process sequentially to handle duplicates within the import file itself if necessary, 
-            // but usually we trust one file doesn't duplicate itself (or we let it merge).
-            // sequential await is safer for logic than Promise.all with transaction race conditions.
-
             for (const s of students) {
                 try {
-                    // Check for existing student (Name + DOB)
                     const existing = await prisma.student.findFirst({
                         where: {
                             fullName: s.fullName,
@@ -336,7 +377,6 @@ export const StudentController = {
                         let mergedEnrollment = (existing.enrollmentHistory as any[]) || [];
                         let mergedHistorical = (existing.historicalAttendance as any[]) || [];
 
-                        // Helper to checking existence
                         const enrollmentExists = (e: any) => mergedEnrollment.some((m: any) =>
                             m.enrollmentDate === e.enrollmentDate && m.className === e.className
                         );
@@ -344,7 +384,6 @@ export const StudentController = {
                             m.rowLabel === h.rowLabel && m.className === h.className
                         );
 
-                        // Merge Enrollment
                         if (s.enrollmentHistory && Array.isArray(s.enrollmentHistory)) {
                             s.enrollmentHistory.forEach((newItem: any) => {
                                 if (!enrollmentExists(newItem)) {
@@ -353,7 +392,6 @@ export const StudentController = {
                             });
                         }
 
-                        // Merge Historical Attendance
                         if (s.historicalAttendance && Array.isArray(s.historicalAttendance)) {
                             s.historicalAttendance.forEach((newItem: any) => {
                                 if (!historyExists(newItem)) {
@@ -362,15 +400,11 @@ export const StudentController = {
                             });
                         }
 
-                        // Update Student
                         await prisma.student.update({
                             where: { id: existing.id },
                             data: {
                                 enrollmentHistory: mergedEnrollment as any,
                                 historicalAttendance: mergedHistorical as any,
-                                // Update other scalar fields if they are currently null/empty in DB?
-                                // Let's keep existing scalars to avoid overwriting good data.
-                                // But if 'dob' was null (unlikely since we matched on it) or address/phone...
                                 address: existing.address || s.address,
                                 contactName: existing.contactName || s.contactName,
                                 contactPhone: existing.contactPhone || s.contactPhone,
@@ -409,6 +443,14 @@ export const StudentController = {
                     errorCount++;
                 }
             }
+
+            // 審計記錄（fire-and-forget）
+            createAuditLog({
+                type: '學生匯入',
+                description: `批次匯入學生：新增 ${createdCount}、合併 ${mergedCount}、失敗 ${errorCount}`,
+                userId: req.user?.id ?? null,
+                metadata: { totalRecords: students.length, created: createdCount, merged: mergedCount, errors: errorCount },
+            });
 
             res.json({
                 success: true,
