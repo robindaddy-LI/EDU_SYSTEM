@@ -81,7 +81,7 @@ const UserManagement: React.FC = () => {
     const getClassName = (classId?: number) => {
         if (!classId) return '-';
         const cls = classes.find(c => c.id === classId);
-        return cls ? cls.className : '-';
+        return cls ? cls.name : '-';
     };
 
     const getRoleBadge = (role: UserRole) => {
@@ -378,7 +378,7 @@ const UserManagement: React.FC = () => {
                                                         <select id="classId" name="classId" value={formData.classId} onChange={handleInputChange} className="mt-1 block w-full py-2 px-3 border border-gray-300 bg-white rounded-md shadow-sm focus:outline-none focus:ring-church-blue-500 focus:border-church-blue-500 sm:text-sm text-gray-900">
                                                             <option value="">無</option>
                                                             {classes.map(cls => (
-                                                                <option key={cls.id} value={cls.id}>{cls.className}</option>
+                                                                <option key={cls.id} value={cls.id}>{cls.name}</option>
                                                             ))}
                                                         </select>
                                                     </div>

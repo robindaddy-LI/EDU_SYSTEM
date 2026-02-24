@@ -120,8 +120,8 @@ const AddNewStudent: React.FC = () => {
                 status: formData.status,
                 dob: formData.dob || undefined,
                 address: formData.address || undefined,
-                contactName: formData.emergencyContactName || undefined,
-                contactPhone: formData.emergencyContactPhone || undefined,
+                contactName: formData.contactName || undefined,
+                contactPhone: formData.contactPhone || undefined,
                 isBaptized: formData.isBaptized,
                 baptismDate: formData.baptismDate || undefined,
                 isSpiritBaptized: formData.isSpiritBaptized,
@@ -281,7 +281,7 @@ const AddNewStudent: React.FC = () => {
                                         <label htmlFor={`className-${index}`} className={formLabelClass}>教會班級</label>
                                         <select id={`className-${index}`} name="className" value={record.className} onChange={(e) => handleEnrollmentChange(index, e)} className={formInputClass}>
                                             <option value="" disabled>請選擇班級...</option>
-                                            {classes.map(cls => <option key={cls.id} value={cls.className}>{cls.className}</option>)}
+                                            {classes.map(cls => <option key={cls.id} value={cls.name}>{cls.name}</option>)}
                                         </select>
                                     </div>
                                     <div className="md:col-span-1">

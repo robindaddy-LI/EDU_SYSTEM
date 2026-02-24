@@ -49,6 +49,12 @@ export interface Teacher {
     phone?: string;
     email?: string;
     notes?: string;
+    classAssignments?: {
+        id: number;
+        classId: number;
+        isLead: boolean;
+        class: { id: number; name: string };
+    }[];
 }
 
 export interface EnrollmentHistory {
@@ -75,6 +81,8 @@ export interface Student {
     address?: string;
     contactName?: string;
     contactPhone?: string;
+    emergencyContactName?: string;
+    emergencyContactPhone?: string;
     isBaptized: boolean;
     baptismDate?: string; // ISO date string
     isSpiritBaptized: boolean;
@@ -85,6 +93,7 @@ export interface Student {
     attendanceRecords?: StudentAttendanceRecord[];
     historicalAttendance?: HistoricalAttendance[];
     class?: { id: number; name: string }; // Nested relation from API
+    createdAt?: string; // ISO date string
 }
 
 export interface Class {

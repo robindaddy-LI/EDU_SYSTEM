@@ -6,7 +6,7 @@ import { useAuth } from '../../AuthContext';
 
 const DashboardView: React.FC = () => {
     const { isAdmin, userClassId } = useAuth();
-    const [classes, setClasses] = useState<{ id: number; className: string; count: number }[]>([]);
+    const [classes, setClasses] = useState<{ id: number; name: string; count: number }[]>([]);
     const [isLoading, setIsLoading] = useState(true);
     const [error, setError] = useState<string | null>(null);
 

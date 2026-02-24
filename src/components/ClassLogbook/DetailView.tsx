@@ -4,6 +4,7 @@ import { Link, useNavigate } from 'react-router-dom';
 import { ClassSession, Teacher, Student, AttendanceStatus } from '../../types';
 import { sessionService, classService, studentService, teacherAssignmentService } from '../../services';
 import { useAuth } from '../../AuthContext';
+import { getAcademicYear } from '../../utils/academicYear';
 
 interface LogbookData {
     session: ClassSession;
@@ -138,7 +139,7 @@ const DetailView: React.FC<{ sessionId: string }> = ({ sessionId }) => {
             // Fetch class name
             try {
                 const classData = await classService.getById(data.session.classId);
-                setClassName(classData.className);
+                setClassName(classData.name);
             } catch {
                 setClassName('未知班級');
             }

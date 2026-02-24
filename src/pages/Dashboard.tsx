@@ -109,7 +109,7 @@ const Dashboard: React.FC = () => {
             .slice(0, 5),
         [sessionsToShow]);
 
-    const classesMap = useMemo(() => new Map(classes.map(cls => [cls.id, cls.className])), [classes]);
+    const classesMap = useMemo(() => new Map(classes.map(cls => [cls.id, cls.name])), [classes]);
 
     const statCards = [
         {

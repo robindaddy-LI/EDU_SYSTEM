@@ -59,7 +59,7 @@ const TeacherAssignmentConfig: React.FC = () => {
                     const classAssignments = assignmentData.filter(a => a.classId === cls.id);
                     return {
                         classId: cls.id,
-                        name: cls.className, // Assuming Class type has className, mapping it to 'name' for AssignmentRow
+                        className: cls.name,
                         teachers: classAssignments.map(a => ({
                             teacherId: a.teacherId,
                             fullName: a.teacher?.fullName || 'Unknown',
@@ -216,7 +216,7 @@ const TeacherAssignmentConfig: React.FC = () => {
                 {assignments.map(row => (
                     <div key={row.classId} className="bg-white rounded-lg shadow-md border p-5 flex flex-col h-full">
                         <h3 className="text-xl font-bold text-gray-800 mb-4 pb-2 border-b">
-                            {row.name}
+                            {row.className}
                         </h3>
 
                         <div className="flex-grow space-y-3 mb-4">

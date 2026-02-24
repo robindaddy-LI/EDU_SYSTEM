@@ -168,7 +168,7 @@ const StudentListReport: React.FC = () => {
     }, []);
 
     const studentsToDisplay = students.filter(s => statusFilter === 'all' || s.status === statusFilter);
-    const classesMap = new Map(classes.map(c => [c.id, c.className])); // Backend className mapped in service
+    const classesMap = new Map(classes.map(c => [c.id, c.name]));
 
     const getStudentTypeName = (type: StudentType) => (type === StudentType.Member ? '信徒' : '慕道');
     const getStatusName = (status: string) => (status === 'active' ? '在學' : '離校');

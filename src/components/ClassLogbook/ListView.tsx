@@ -27,7 +27,7 @@ const ListView: React.FC<{ classId: string }> = ({ classId }) => {
 
                 // Fetch class name
                 const classData = await classService.getById(numericClassId);
-                setClassName(classData.className);
+                setClassName(classData.name);
 
                 // Fetch sessions
                 const sessionData = await sessionService.getAll({ classId: numericClassId });

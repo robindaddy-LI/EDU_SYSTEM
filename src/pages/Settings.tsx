@@ -227,7 +227,7 @@ const Settings: React.FC = () => {
 
     const getTargetClassId = (dob: string | undefined, academicYear: number): number | null | -1 => {
         if (!dob) return null;
-        const classMap = new Map<string, number>(classes.map(c => [c.className, c.id]));
+        const classMap = new Map<string, number>(classes.map(c => [c.name, c.id]));
         const birthDate = new Date(dob);
 
         // Validation: Check if date is valid
@@ -848,7 +848,7 @@ const Settings: React.FC = () => {
                         <div key={cls.id} className="p-5 border border-gray-100 bg-gray-50/50 rounded-2xl shadow-sm hover:shadow-md transition-shadow">
                             <div className="flex items-center mb-4">
                                 <span className="w-1 h-6 bg-church-blue-500 rounded-full mr-3"></span>
-                                <h3 className="font-bold text-lg text-gray-800">{cls.className}</h3>
+                                <h3 className="font-bold text-lg text-gray-800">{cls.name}</h3>
                             </div>
                             <div className="grid grid-cols-1 md:grid-cols-2 gap-8">
                                 <div>
