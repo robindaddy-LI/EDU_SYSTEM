@@ -9,7 +9,7 @@ interface EnrollmentFormRecord {
     id?: number; // Existing records will have an ID
     tempId?: number; // New records will have a temp ID for the key prop
     enrollmentDate: string;
-    className: string;
+    classTitle: string;
     schoolName: string;
 }
 
@@ -93,7 +93,7 @@ const EditStudent: React.FC = () => {
             {
                 tempId: Date.now(),
                 enrollmentDate: '',
-                className: '',
+                classTitle: '',
                 schoolName: '',
             }
         ]);
@@ -123,7 +123,7 @@ const EditStudent: React.FC = () => {
         setIsSubmitting(true);
         try {
             const processedEnrollmentHistory = enrollmentHistory
-                .filter(r => r.enrollmentDate && r.className)
+                .filter(r => r.enrollmentDate && r.classTitle)
                 .map(record => {
                     const { tempId, ...rest } = record;
                     return {
@@ -304,10 +304,10 @@ const EditStudent: React.FC = () => {
                                         <input type="date" id={`enrollmentDate-${index}`} name="enrollmentDate" value={record.enrollmentDate} onChange={(e) => handleEnrollmentChange(index, e)} className={formInputClass} />
                                     </div>
                                     <div className="md:col-span-1">
-                                        <label htmlFor={`className-${index}`} className={formLabelClass}>教會班級</label>
-                                        <select id={`className-${index}`} name="className" value={record.className} onChange={(e) => handleEnrollmentChange(index, e)} className={formInputClass}>
+                                        <label htmlFor={`classTitle-${index}`} className={formLabelClass}>教會班級</label>
+                                        <select id={`classTitle-${index}`} name="classTitle" value={record.classTitle} onChange={(e) => handleEnrollmentChange(index, e)} className={formInputClass}>
                                             <option value="" disabled>請選擇班級...</option>
-                                            {classes.map(cls => <option key={cls.id} value={cls.className}>{cls.className}</option>)}
+                                            {classes.map(cls => <option key={cls.id} value={cls.name}>{cls.name}</option>)}
                                         </select>
                                     </div>
                                     <div className="md:col-span-1">

@@ -18,11 +18,17 @@ async function testCreateTeacher() {
 
         const response = await axios.post(API_URL, payload);
         console.log('Success:', response.status, response.data);
-    } catch (error: any) {
-        console.error('Error:', error.message);
-        if (error.response) {
-            console.error('Status:', error.response.status);
-            console.error('Data:', error.response.data);
+    } catch (error: unknown) {
+        if (axios.isAxiosError(error)) {
+            console.error('Error:', error.message);
+            if (error.response) {
+                console.error('Status:', error.response.status);
+                console.error('Data:', error.response.data);
+            }
+        } else if (error instanceof Error) {
+            console.error('Error:', error.message);
+        } else {
+            console.error('Error:', error);
         }
     }
 }

@@ -19,11 +19,17 @@ async function testEndpoints() {
             console.log('Sample Teacher:', teachers.data[0]);
         }
 
-    } catch (error: any) {
-        console.error('API Error:', error.message);
-        if (error.response) {
-            console.error('Status:', error.response.status);
-            console.error('Data:', error.response.data);
+    } catch (error: unknown) {
+        if (axios.isAxiosError(error)) {
+            console.error('API Error:', error.message);
+            if (error.response) {
+                console.error('Status:', error.response.status);
+                console.error('Data:', error.response.data);
+            }
+        } else if (error instanceof Error) {
+            console.error('API Error:', error.message);
+        } else {
+            console.error('API Error:', error);
         }
     }
 }

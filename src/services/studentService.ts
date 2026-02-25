@@ -21,8 +21,8 @@ export interface StudentCreateData {
     isSpiritBaptized?: boolean;
     spiritBaptismDate?: string;
     notes?: string;
-    enrollmentHistory?: any[];
-    historicalAttendance?: any[];
+    enrollmentHistory?: Record<string, unknown>[];
+    historicalAttendance?: Record<string, unknown>[];
 }
 
 export const studentService = {

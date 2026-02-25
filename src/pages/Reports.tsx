@@ -195,9 +195,9 @@ const StudentListReport: React.FC = () => {
             <div className="flex flex-wrap justify-between items-center mb-4 gap-4">
                 <div className="flex items-center space-x-4 bg-gray-100 p-2 rounded-lg">
                     <label className="text-sm font-medium text-gray-700">狀態:</label>
-                    <FilterRadio id="studentStatusActive" value="active" label="在學" current={statusFilter} onChange={setStatusFilter} />
-                    <FilterRadio id="studentStatusInactive" value="inactive" label="離校" current={statusFilter} onChange={setStatusFilter} />
-                    <FilterRadio id="studentStatusAll" value="all" label="全部" current={statusFilter} onChange={setStatusFilter} />
+                    <FilterRadio id="studentStatusActive" value="active" label="在學" current={statusFilter} onChange={(v) => setStatusFilter(v as 'active' | 'inactive' | 'all')} />
+                    <FilterRadio id="studentStatusInactive" value="inactive" label="離校" current={statusFilter} onChange={(v) => setStatusFilter(v as 'active' | 'inactive' | 'all')} />
+                    <FilterRadio id="studentStatusAll" value="all" label="全部" current={statusFilter} onChange={(v) => setStatusFilter(v as 'active' | 'inactive' | 'all')} />
                 </div>
                 <button onClick={handleExport} className="bg-green-600 text-white px-4 py-2 rounded-lg hover:bg-green-700 transition-colors duration-200 flex items-center">
                     匯出為 CSV
@@ -279,9 +279,9 @@ const TeacherListReport: React.FC = () => {
             <div className="flex flex-wrap justify-between items-center mb-4 gap-4">
                 <div className="flex items-center space-x-4 bg-gray-100 p-2 rounded-lg">
                     <label className="text-sm font-medium text-gray-700">狀態:</label>
-                    <FilterRadio id="teacherStatusActive" value="active" label="在職" current={statusFilter} onChange={setStatusFilter} />
-                    <FilterRadio id="teacherStatusInactive" value="inactive" label="離職" current={statusFilter} onChange={setStatusFilter} />
-                    <FilterRadio id="teacherStatusAll" value="all" label="全部" current={statusFilter} onChange={setStatusFilter} />
+                    <FilterRadio id="teacherStatusActive" value="active" label="在職" current={statusFilter} onChange={(v) => setStatusFilter(v as 'active' | 'inactive' | 'all')} />
+                    <FilterRadio id="teacherStatusInactive" value="inactive" label="離職" current={statusFilter} onChange={(v) => setStatusFilter(v as 'active' | 'inactive' | 'all')} />
+                    <FilterRadio id="teacherStatusAll" value="all" label="全部" current={statusFilter} onChange={(v) => setStatusFilter(v as 'active' | 'inactive' | 'all')} />
                 </div>
                 <button onClick={handleExport} className="bg-green-600 text-white px-4 py-2 rounded-lg hover:bg-green-700 transition-colors duration-200 flex items-center">
                     匯出為 CSV
@@ -319,7 +319,7 @@ const TeacherListReport: React.FC = () => {
     );
 };
 
-const FilterRadio: React.FC<{ id: string, value: string, label: string, current: string, onChange: (val: any) => void }> = ({ id, value, label, current, onChange }) => (
+const FilterRadio: React.FC<{ id: string, value: string, label: string, current: string, onChange: (val: string) => void }> = ({ id, value, label, current, onChange }) => (
     <div className="flex items-center">
         <input
             type="radio"

@@ -31,8 +31,8 @@ async function simulateFrontend() {
         if (classes.length === 0) {
             console.log('   WARNING: Classes array is empty! This would cause empty UI.');
         } else {
-            const initialRows = classes.map((cls: any) => {
-                const classAssignments = assignmentData.filter((a: any) => a.classId === cls.id);
+            const initialRows = classes.map((cls: { id: number; name: string }) => {
+                const classAssignments = assignmentData.filter((a: { classId: number }) => a.classId === cls.id);
                 return {
                     classId: cls.id,
                     className: cls.name,
@@ -42,11 +42,17 @@ async function simulateFrontend() {
             console.log('   Mapped Rows (First 3):', initialRows.slice(0, 3));
         }
 
-    } catch (error: any) {
-        console.error('   ERROR:', error.message);
-        if (error.response) {
-            console.error('   Status:', error.response.status);
-            console.error('   Data:', error.response.data);
+    } catch (error: unknown) {
+        if (axios.isAxiosError(error)) {
+            console.error('   ERROR:', error.message);
+            if (error.response) {
+                console.error('   Status:', error.response.status);
+                console.error('   Data:', error.response.data);
+            }
+        } else if (error instanceof Error) {
+            console.error('   ERROR:', error.message);
+        } else {
+            console.error('   ERROR:', error);
         }
     }
 }

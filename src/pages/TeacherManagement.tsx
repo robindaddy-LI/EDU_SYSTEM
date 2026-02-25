@@ -203,7 +203,7 @@ const TeacherManagement: React.FC = () => {
                                     <td className="px-6 py-4 text-sm text-gray-500">
                                         {teacher.classAssignments && teacher.classAssignments.length > 0 ? (
                                             <div className="flex flex-wrap gap-1">
-                                                {teacher.classAssignments.map((assignment: any) => (
+                                                {teacher.classAssignments.map((assignment: NonNullable<Teacher['classAssignments']>[0]) => (
                                                     <span
                                                         key={assignment.id}
                                                         className={`px-2 py-1 text-xs rounded ${assignment.isLead

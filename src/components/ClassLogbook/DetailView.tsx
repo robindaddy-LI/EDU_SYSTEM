@@ -145,13 +145,20 @@ const DetailView: React.FC<{ sessionId: string }> = ({ sessionId }) => {
             }
 
             // Transform data to match frontend types
-            const attendingTeachers = (data as any).attendingTeachers?.map((rec: any) => ({
+            type SessionDataResponse = {
+                session: ClassSession;
+                attendingTeachers?: Array<{ teacher: { id: number; fullName: string }; status: string; reason?: string }>;
+                studentAttendance?: Array<{ student: { id: number; fullName: string }; status: string; reason?: string }>;
+            };
+
+            const sessionData = data as unknown as SessionDataResponse;
+            const attendingTeachers = sessionData.attendingTeachers?.map((rec) => ({
                 teacher: rec.teacher,
                 status: rec.status as AttendanceStatus,
                 reason: rec.reason
             })) || [];
 
-            const studentAttendance = (data as any).studentAttendance?.map((rec: any) => ({
+            const studentAttendance = sessionData.studentAttendance?.map((rec) => ({
                 student: rec.student,
                 status: rec.status as AttendanceStatus,
                 reason: rec.reason

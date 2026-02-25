@@ -7,6 +7,7 @@ import classService from '../services/classService';
 import operationLogService from '../services/operationLogService';
 import teacherService from '../services/teacherService';
 import { useAuth } from '../AuthContext';
+import { StudentCreateData } from '../services/studentService';
 // Import XLSX from CDN
 import * as XLSX from 'https://cdn.sheetjs.com/xlsx-0.20.3/package/xlsx.mjs';
 
@@ -394,13 +395,13 @@ const Settings: React.FC = () => {
 
             const rocYear = gregorianToRoc(parseInt(selectedYear, 10));
             setAssignmentSaveResult(`${rocYear} 學年度教員設定已成功儲存！`);
-        } catch (error: any) {
+        } catch (error: unknown) {
             console.error('Failed to save teacher assignments:', error);
-            const responseData = error.response?.data;
-            const errorMessage = responseData?.error || error.message || '儲存失敗';
-            const details = responseData?.details ? ` (${responseData.details})` : '';
-            const code = responseData?.code ? ` [Code: ${responseData.code}]` : '';
-            const meta = responseData?.meta ? ` Meta: ${JSON.stringify(responseData.meta)}` : '';
+            const errResponse = (error as { response?: { data?: { error?: string, details?: string, code?: string, meta?: unknown } } })?.response?.data;
+            const errorMessage = errResponse?.error || (error instanceof Error ? error.message : '儲存失敗');
+            const details = errResponse?.details ? ` (${errResponse.details})` : '';
+            const code = errResponse?.code ? ` [Code: ${errResponse.code}]` : '';
+            const meta = errResponse?.meta ? ` Meta: ${JSON.stringify(errResponse.meta)}` : '';
 
             setAssignmentSaveResult(`❌ ${errorMessage}${code}${details}${meta}`);
         } finally {
@@ -410,8 +411,8 @@ const Settings: React.FC = () => {
 
     // --- Core Data Processing Logic (Shared for CSV/Excel Rows) ---
     // rows: 2D array of values (strings, numbers, etc.)
-    const processImportData = (rows: any[][]) => {
-        const parsedStudents: any[] = [];
+    const processImportData = (rows: unknown[][]) => {
+        const parsedStudents: StudentCreateData[] = [];
         let enrollmentIdCounter = 1000 + Date.now();
         let tempId = 1;
 
@@ -430,7 +431,8 @@ const Settings: React.FC = () => {
                 if (!name) continue;
 
                 // Initialize Student Object
-                const student: any = {
+                const student: StudentCreateData & { id: number; emergencyContactName?: string; emergencyContactPhone?: string } = {
+                    id: tempId,
                     fullName: name,
                     studentType: StudentType.Member, // Default
                     status: 'active',
@@ -448,7 +450,7 @@ const Settings: React.FC = () => {
                     const valRow = rows[i + 2];
                     // Structure matches: ,DOB, WaterBaptism, SpiritBaptism, Father, Mother, Phone, ParentMobile
 
-                    student.dob = parseDateString(valRow[1]);
+                    student.dob = parseDateString(valRow[1] as string | number | Date);
 
                     const waterInfo = parseBaptismInfo(String(valRow[2] || ''));
                     student.isBaptized = waterInfo.is;
@@ -494,19 +496,19 @@ const Settings: React.FC = () => {
                         const headers = subRow;
                         const values = rows[j + 1]; // The row below header
                         if (values) {
-                            headers.forEach((header: any, idx: number) => {
+                            headers.forEach((header: unknown, idx: number) => {
                                 if (idx > 0 && values[idx]) {
                                     const rocYearStr = String(values[idx]).trim();
                                     const rocYear = parseInt(rocYearStr);
                                     if (!isNaN(rocYear)) {
                                         const adYear = rocYear + 1911;
-                                        const mappedClassName = mapClassName(header);
+                                        const mappedClassName = mapClassName(String(header));
 
                                         student.enrollmentHistory!.push({
                                             id: enrollmentIdCounter++,
                                             studentId: student.id,
                                             enrollmentDate: `${adYear}-09-01`,
-                                            className: mappedClassName,
+                                            classTitle: mappedClassName,
                                             schoolName: '' // Not in data
                                         });
                                     }
@@ -529,7 +531,7 @@ const Settings: React.FC = () => {
 
                             const rowLabel = String(attRow[1] || '').trim(); // 第一年, 第二年...
                             if (rowLabel) {
-                                headers.forEach((header: any, idx: number) => {
+                                headers.forEach((header: unknown, idx: number) => {
                                     if (idx > 1 && attRow[idx]) { // Skip col 0,1
                                         let val = parseFloat(String(attRow[idx]));
                                         if (!isNaN(val)) {
@@ -542,10 +544,10 @@ const Settings: React.FC = () => {
                                             // Round to 1 decimal place
                                             val = Math.round(val * 10) / 10;
 
-                                            const mappedClassName = mapClassName(header);
+                                            const mappedClassName = mapClassName(String(header));
                                             student.historicalAttendance!.push({
                                                 rowLabel: rowLabel,
-                                                className: mappedClassName,
+                                                classTitle: mappedClassName,
                                                 percentage: val
                                             });
                                         }
@@ -603,13 +605,13 @@ const Settings: React.FC = () => {
             const data = await file.arrayBuffer();
             const workbook = XLSX.read(data, { type: 'array' });
 
-            let allStudentsToImport: any[] = [];
+            let allStudentsToImport: StudentCreateData[] = [];
 
             // Iterate through all sheets
             for (const sheetName of workbook.SheetNames) {
                 const sheet = workbook.Sheets[sheetName];
                 // Convert sheet to array of arrays. defval: '' ensures empty cells are empty strings
-                const rows = XLSX.utils.sheet_to_json(sheet, { header: 1, defval: '' }) as any[][];
+                const rows = XLSX.utils.sheet_to_json(sheet, { header: 1, defval: '' }) as unknown[][];
 
                 // processImportData is now synchronous and returns array
                 const sheetStudents = processImportData(rows);

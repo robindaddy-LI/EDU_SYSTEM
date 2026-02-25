@@ -2,6 +2,8 @@ import React, { useState } from 'react';
 import { useNavigate, useLocation } from 'react-router-dom';
 import { useAuth } from '../AuthContext';
 import { userService } from '../services';
+import { User } from '../types';
+import axios from 'axios';
 
 const Login: React.FC = () => {
     const [username, setUsername] = useState('');
@@ -26,7 +28,7 @@ const Login: React.FC = () => {
                 // Store JWT token in localStorage
                 localStorage.setItem('edu_auth_token', response.token);
                 // Update AuthContext with user data
-                login(response.user as any);
+                login(response.user as User);
                 navigate(from, { replace: true });
             }
         } catch (err: any) {

@@ -1,8 +1,8 @@
-
 import React, { useState, useEffect, useMemo, useCallback } from 'react';
 import { User, UserRole } from '../types';
 import { userService, classService } from '../services';
 import { ClassWithCounts } from '../services/classService';
+import axios from 'axios';
 
 interface UserFormData {
     username: string;
@@ -183,9 +183,13 @@ const UserManagement: React.FC = () => {
             }
             closeModal();
             fetchUsers(); // Refresh the list
-        } catch (err: any) {
+        } catch (err: unknown) {
             console.error('Failed to save user:', err);
-            alert(err.response?.data?.error || "儲存失敗，請稍後再試");
+            if (axios.isAxiosError(err)) {
+                alert(err.response?.data?.error || "儲存失敗，請稍後再試");
+            } else {
+                alert("儲存失敗，請稍後再試");
+            }
         } finally {
             setIsSaving(false);
         }

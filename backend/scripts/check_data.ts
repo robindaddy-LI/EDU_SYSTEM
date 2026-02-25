@@ -12,8 +12,8 @@ async function main() {
         _count: { id: true },
         orderBy: { classId: 'asc' }
     });
-    // Cast to any to avoid TS checking exact aggregated return type
-    console.table(students.map((s: any) => ({ classId: s.classId, count: s._count.id })));
+    // Type the returned aggregation
+    console.table(students.map((s: { classId: number | null; _count: { id: number } }) => ({ classId: s.classId, count: s._count.id })));
 
     console.log('\n2. Teacher Assignments by Academic Year:');
     // For older Prisma versions, orderBy in groupBy might be restricted. Removing orderBy for safety.
@@ -21,7 +21,7 @@ async function main() {
         by: ['academicYear', 'classId'],
         _count: { teacherId: true }
     });
-    console.table(assignments.map((a: any) => ({ year: a.academicYear, classId: a.classId, teachers: a._count.teacherId })));
+    console.table(assignments.map((a: { academicYear: string; classId: number; _count: { teacherId: number } }) => ({ year: a.academicYear, classId: a.classId, teachers: a._count.teacherId })));
 
     console.log('\n3. Class Sessions by Date Range (Recent):');
     const sessions = await prisma.classSession.findMany({
@@ -31,7 +31,7 @@ async function main() {
     });
 
     console.log('Recent Sessions:');
-    sessions.forEach((s: any) => {
+    sessions.forEach((s: { id: number; date: Date; classId: number; _count: { studentAttendance: number; teacherAttendance: number } }) => {
         console.log(`[${s.id}] ${s.date.toISOString().split('T')[0]} (Class ${s.classId}) - Att: ${s._count.studentAttendance} Students, ${s._count.teacherAttendance} Teachers`);
     });
 

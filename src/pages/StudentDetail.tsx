@@ -171,7 +171,7 @@ const StudentDetail: React.FC = () => {
 
     const getCellValue = (row: string, col: string) => {
         // 1. Check Manual Buffer first (if editing or just viewing manual overrides)
-        const manualEntry = manualHistoryBuffer.find(h => h.rowLabel === row && h.className === col);
+        const manualEntry = manualHistoryBuffer.find(h => h.rowLabel === row && h.classTitle === col);
         if (manualEntry) return manualEntry.percentage;
 
         // 2. Check Calculated Grid
@@ -185,10 +185,10 @@ const StudentDetail: React.FC = () => {
         const val = parseInt(valStr, 10);
         setManualHistoryBuffer(prev => {
             // Remove existing entry for this cell
-            const filtered = prev.filter(h => !(h.rowLabel === row && h.className === col));
+            const filtered = prev.filter(h => !(h.rowLabel === row && h.classTitle === col));
             if (isNaN(val)) return filtered; // If cleared, remove it
             // Add new
-            return [...filtered, { rowLabel: row, className: col, percentage: val }];
+            return [...filtered, { rowLabel: row, classTitle: col, percentage: val }];
         });
     };
 
@@ -294,7 +294,7 @@ const StudentDetail: React.FC = () => {
                                         <div className="flex flex-col sm:flex-row sm:items-center bg-gray-50 rounded-2xl p-4 hover:bg-green-50 transition-colors">
                                             <div className="flex-1">
                                                 <p className="text-sm font-bold text-gray-500 mb-1">{record.enrollmentDate}</p>
-                                                <h3 className="text-lg font-black text-gray-800">{record.className}</h3>
+                                                <h3 className="text-lg font-black text-gray-800">{record.classTitle}</h3>
                                                 {record.schoolName && <p className="text-sm text-gray-600 mt-1">學校：{record.schoolName}</p>}
                                             </div>
                                         </div>
@@ -344,7 +344,7 @@ const StudentDetail: React.FC = () => {
                                                 <td className="px-4 py-3 text-xs font-black text-gray-400 whitespace-nowrap bg-gray-50/50">{row}</td>
                                                 {classHeaders.map(col => {
                                                     const val = getCellValue(row, col);
-                                                    const isManual = manualHistoryBuffer.some(h => h.rowLabel === row && h.className === col);
+                                                    const isManual = manualHistoryBuffer.some(h => h.rowLabel === row && h.classTitle === col);
 
                                                     return (
                                                         <td key={getCellKey(row, col)} className="px-2 py-2 whitespace-nowrap text-center relative group">

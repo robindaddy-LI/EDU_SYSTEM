@@ -190,7 +190,28 @@ EDU_SYSTEM/
 
 ---
 
+## 8. 🤖 自動化測試與驗證 (Testing Agent Rules)
+
+- **原則**：代碼變更必須經過自動化驗證。
+- **規則**：
+  - 修改 `controllers/` 或 `routes/` 後，**必須**檢查或編寫對應的單元測試。
+  - **審計驗證**：測試必須包含檢查 `prisma.operationLog.create` 是否被正確呼叫。
+  - **合併前提**：在提交合併計畫前，必須執行 `npm run test` 並確認通過。
+
+---
+
+## 9. 📝 知識持久化規範 (Auto-Documentation)
+
+- **規則**：每次完成重大功能或修復後，AI **必須**自動更新以下檔案：
+  - `docs/DEVELOPMENT_LOG.md`：記錄變更日期、內容與影響範圍。
+  - `docs/walkthrough.md`：若是架構變動，需更新實作導覽。
+- **目的**：確保專案記憶不隨對話結束而消失，維持文檔與程式碼 100% 同步。
+
+---
+
 ## 🛠️ 常用指令
 
 - 開發環境：`npm run dev`
 - 部署測試：`docker-compose up --build`
+- 執行測試：`cd backend && npm test`
+- 監聽測試：`cd backend && npm run test:watch`

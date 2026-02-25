@@ -1,4 +1,5 @@
 import { Request, Response } from 'express';
+import { Prisma } from '@prisma/client';
 import prisma from '../prisma';
 import { AuthRequest } from '../middleware/auth';
 import { createAuditLog, diffFields } from '../utils/auditLog';
@@ -278,8 +279,8 @@ export const StudentController = {
                     await tx.student.update({
                         where: { id: targetId },
                         data: {
-                            enrollmentHistory: mergedEnrollment as any,
-                            historicalAttendance: mergedHistorical as any
+                            enrollmentHistory: mergedEnrollment as Prisma.InputJsonValue,
+                            historicalAttendance: mergedHistorical as Prisma.InputJsonValue
                         }
                     });
 
@@ -413,8 +414,8 @@ export const StudentController = {
                         await prisma.student.update({
                             where: { id: existing.id },
                             data: {
-                                enrollmentHistory: mergedEnrollment as any,
-                                historicalAttendance: mergedHistorical as any,
+                                enrollmentHistory: mergedEnrollment as Prisma.InputJsonValue,
+                                historicalAttendance: mergedHistorical as Prisma.InputJsonValue,
                                 address: existing.address || s.address,
                                 contactName: existing.contactName || s.contactName,
                                 contactPhone: existing.contactPhone || s.contactPhone,
@@ -442,8 +443,8 @@ export const StudentController = {
                                 isSpiritBaptized: s.isSpiritBaptized || false,
                                 spiritBaptismDate: s.spiritBaptismDate ? new Date(s.spiritBaptismDate) : null,
                                 notes: s.notes,
-                                enrollmentHistory: s.enrollmentHistory as any,
-                                historicalAttendance: s.historicalAttendance as any
+                                enrollmentHistory: s.enrollmentHistory as Prisma.InputJsonValue,
+                                historicalAttendance: s.historicalAttendance as Prisma.InputJsonValue
                             }
                         });
                         createdCount++;
