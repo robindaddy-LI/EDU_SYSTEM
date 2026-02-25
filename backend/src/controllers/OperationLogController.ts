@@ -7,7 +7,11 @@ export const OperationLogController = {
         try {
             const { type, startDate, endDate, limit } = req.query;
 
-            const where: any = {};
+            interface LogFilter {
+                type?: string;
+                timestamp?: { gte?: Date; lte?: Date };
+            }
+            const where: LogFilter = {};
 
             if (type) {
                 where.type = type as string;
