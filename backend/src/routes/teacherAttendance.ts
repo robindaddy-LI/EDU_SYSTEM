@@ -1,5 +1,6 @@
 import express from 'express';
 import { TeacherAttendanceController } from '../controllers/TeacherAttendanceController';
+import { verifyToken } from '../middleware/auth';
 
 const router = express.Router();
 
@@ -10,12 +11,12 @@ router.get('/', TeacherAttendanceController.getAll);
 router.get('/:id', TeacherAttendanceController.getById);
 
 // Create or update teacher attendance record
-router.post('/', TeacherAttendanceController.upsert);
+router.post('/', verifyToken, TeacherAttendanceController.upsert);
 
 // Batch upsert teacher attendance records
-router.post('/batch', TeacherAttendanceController.batchUpsert);
+router.post('/batch', verifyToken, TeacherAttendanceController.batchUpsert);
 
 // Delete teacher attendance record
-router.delete('/:id', TeacherAttendanceController.delete);
+router.delete('/:id', verifyToken, TeacherAttendanceController.delete);
 
 export default router;

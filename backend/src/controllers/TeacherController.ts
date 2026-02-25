@@ -1,18 +1,19 @@
-import { Request, Response } from 'express';
+import { Response } from 'express';
 import prisma from '../prisma';
+import { AuthRequest } from '../middleware/auth';
+import { createAuditLog, diffFields } from '../utils/auditLog';
 
 export const TeacherController = {
     // Get all teachers with optional filtering
-    async getAllTeachers(req: Request, res: Response) {
+    async getAllTeachers(req: AuthRequest, res: Response) {
         try {
             const { status, search, academicYear } = req.query;
 
-            const where: any = {};
+            const where: Record<string, unknown> = {};
             if (status) where.status = status as string;
             if (search) {
                 where.fullName = { contains: search as string, mode: 'insensitive' };
             }
-
 
             // Calculate current academic year (Taiwan school year: Sep 1 - Aug 31)
             let currentYear: string;
@@ -52,7 +53,7 @@ export const TeacherController = {
     },
 
     // Get single teacher by ID with class assignments
-    async getTeacherById(req: Request, res: Response) {
+    async getTeacherById(req: AuthRequest, res: Response) {
         try {
             const { id } = req.params;
             const teacher = await prisma.teacher.findUnique({
@@ -82,9 +83,10 @@ export const TeacherController = {
     },
 
     // Create a new teacher
-    async createTeacher(req: Request, res: Response) {
+    async createTeacher(req: AuthRequest, res: Response) {
         try {
             const { fullName, teacherType, status, phone, email, notes } = req.body;
+            const operatorId = req.user?.id ?? null;
 
             const newTeacher = await prisma.teacher.create({
                 data: {
@@ -97,6 +99,18 @@ export const TeacherController = {
                 }
             });
 
+            await createAuditLog({
+                type: '教師新增',
+                description: `新增教師「${newTeacher.fullName}」`,
+                userId: operatorId,
+                metadata: {
+                    teacherId: newTeacher.id,
+                    fullName: newTeacher.fullName,
+                    teacherType: newTeacher.teacherType,
+                    status: newTeacher.status
+                }
+            });
+
             res.status(201).json(newTeacher);
         } catch (error) {
             console.error(error);
@@ -105,14 +119,37 @@ export const TeacherController = {
     },
 
     // Update teacher
-    async updateTeacher(req: Request, res: Response) {
+    async updateTeacher(req: AuthRequest, res: Response) {
         try {
             const { id } = req.params;
             const { fullName, teacherType, status, phone, email, notes } = req.body;
+            const operatorId = req.user?.id ?? null;
+
+            // Capture before state
+            const before = await prisma.teacher.findUnique({ where: { id: Number(id) } });
+            if (!before) {
+                return res.status(404).json({ error: 'Teacher not found' });
+            }
 
             const updated = await prisma.teacher.update({
                 where: { id: Number(id) },
                 data: { fullName, teacherType, status, phone, email, notes }
+            });
+
+            const diff = diffFields(
+                before as unknown as Record<string, unknown>,
+                updated as unknown as Record<string, unknown>,
+                ['fullName', 'teacherType', 'status', 'phone', 'email', 'notes']
+            );
+
+            await createAuditLog({
+                type: '教師修改',
+                description: `修改教師「${updated.fullName}」資料`,
+                userId: operatorId,
+                metadata: {
+                    teacherId: updated.id,
+                    diff
+                }
             });
 
             res.json(updated);
@@ -123,13 +160,24 @@ export const TeacherController = {
     },
 
     // Delete teacher (soft delete)
-    async deleteTeacher(req: Request, res: Response) {
+    async deleteTeacher(req: AuthRequest, res: Response) {
         try {
             const { id } = req.params;
+            const operatorId = req.user?.id ?? null;
 
             const updated = await prisma.teacher.update({
                 where: { id: Number(id) },
                 data: { status: 'inactive' }
+            });
+
+            await createAuditLog({
+                type: '教師停用',
+                description: `停用教師「${updated.fullName}」`,
+                userId: operatorId,
+                metadata: {
+                    teacherId: updated.id,
+                    fullName: updated.fullName
+                }
             });
 
             res.json({ success: true, message: 'Teacher deactivated', teacher: updated });
@@ -140,10 +188,11 @@ export const TeacherController = {
     },
 
     // Assign teacher to class
-    async assignToClass(req: Request, res: Response) {
+    async assignToClass(req: AuthRequest, res: Response) {
         try {
             const { id } = req.params;
             const { classId, academicYear, isLead } = req.body;
+            const operatorId = req.user?.id ?? null;
 
             const assignment = await prisma.teacherClassAssignment.create({
                 data: {
@@ -151,6 +200,19 @@ export const TeacherController = {
                     classId: Number(classId),
                     academicYear,
                     isLead: isLead || false
+                }
+            });
+
+            await createAuditLog({
+                type: '教師班級指派',
+                description: `指派教師 #${id} 至班級 #${classId}（${academicYear}學年）`,
+                userId: operatorId,
+                metadata: {
+                    assignmentId: assignment.id,
+                    teacherId: Number(id),
+                    classId: Number(classId),
+                    academicYear,
+                    isLead: assignment.isLead
                 }
             });
 

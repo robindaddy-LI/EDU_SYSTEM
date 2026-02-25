@@ -2,11 +2,11 @@ import { Request, Response } from 'express';
 import bcrypt from 'bcrypt';
 import jwt from 'jsonwebtoken';
 import prisma from '../prisma';
+import { AuthRequest } from '../middleware/auth';
+import { createAuditLog } from '../utils/auditLog';
 
-// Bcrypt salt rounds for password hashing
 const SALT_ROUNDS = 10;
 
-// Note: Password hashing implemented with bcrypt.
 
 export const UserController = {
     // Get all users (admin only)
@@ -14,7 +14,7 @@ export const UserController = {
         try {
             const { role, status, search } = req.query;
 
-            const where: any = {};
+            const where: Record<string, unknown> = {};
             if (role) where.role = role as string;
             if (status) where.status = status as string;
             if (search) {
@@ -28,15 +28,9 @@ export const UserController = {
                 where,
                 orderBy: { fullName: 'asc' },
                 select: {
-                    id: true,
-                    username: true,
-                    fullName: true,
-                    role: true,
-                    classId: true,
-                    email: true,
-                    status: true,
-                    createdAt: true,
-                    class: true
+                    id: true, username: true, fullName: true,
+                    role: true, classId: true, email: true,
+                    status: true, createdAt: true, class: true
                 }
             });
             res.json(users);
@@ -53,22 +47,12 @@ export const UserController = {
             const user = await prisma.user.findUnique({
                 where: { id: Number(id) },
                 select: {
-                    id: true,
-                    username: true,
-                    fullName: true,
-                    role: true,
-                    classId: true,
-                    email: true,
-                    status: true,
-                    createdAt: true,
-                    class: true
+                    id: true, username: true, fullName: true,
+                    role: true, classId: true, email: true,
+                    status: true, createdAt: true, class: true
                 }
             });
-
-            if (!user) {
-                return res.status(404).json({ error: 'User not found' });
-            }
-
+            if (!user) return res.status(404).json({ error: 'User not found' });
             res.json(user);
         } catch (error) {
             console.error(error);
@@ -77,38 +61,26 @@ export const UserController = {
     },
 
     // Create a new user
-    async createUser(req: Request, res: Response) {
+    async createUser(req: AuthRequest, res: Response) {
         try {
             const { username, password, fullName, role, classId, email, status } = req.body;
+            const operatorId = req.user?.id ?? null;
 
-            // Check if username already exists
             const existing = await prisma.user.findUnique({ where: { username } });
-            if (existing) {
-                return res.status(400).json({ error: 'Username already exists' });
-            }
+            if (existing) return res.status(400).json({ error: 'Username already exists' });
 
-            // Hash password with bcrypt
             const passwordHash = await bcrypt.hash(password, SALT_ROUNDS);
 
             const newUser = await prisma.user.create({
-                data: {
-                    username,
-                    passwordHash,
-                    fullName,
-                    role,
-                    classId: classId ? Number(classId) : null,
-                    email,
-                    status: status || 'active'
-                },
-                select: {
-                    id: true,
-                    username: true,
-                    fullName: true,
-                    role: true,
-                    classId: true,
-                    email: true,
-                    status: true
-                }
+                data: { username, passwordHash, fullName, role, classId: classId ? Number(classId) : null, email, status: status || 'active' },
+                select: { id: true, username: true, fullName: true, role: true, classId: true, email: true, status: true }
+            });
+
+            await createAuditLog({
+                type: '使用者新增',
+                description: `新增使用者「${newUser.fullName}」(${newUser.username})`,
+                userId: operatorId,
+                metadata: { userId: newUser.id, username: newUser.username, role: newUser.role }
             });
 
             res.status(201).json(newUser);
@@ -119,47 +91,42 @@ export const UserController = {
     },
 
     // Update user
-    async updateUser(req: Request, res: Response) {
+    async updateUser(req: AuthRequest, res: Response) {
         try {
             const { id } = req.params;
             const { username, password, fullName, role, classId, email, status } = req.body;
+            const operatorId = req.user?.id ?? null;
 
-            const updateData: any = {
-                fullName,
-                role,
-                classId: classId !== undefined ? (classId ? Number(classId) : null) : undefined,
-                email,
-                status
-            };
-
-            // Only update password if provided (hash with bcrypt)
+            // Build update payload using spread to stay compatible with Prisma generated types
+            let passwordHash: string | undefined;
             if (password) {
-                updateData.passwordHash = await bcrypt.hash(password, SALT_ROUNDS);
+                passwordHash = await bcrypt.hash(password, SALT_ROUNDS);
             }
 
-            // Only update username if provided and different
             if (username) {
-                const existing = await prisma.user.findFirst({
-                    where: { username, NOT: { id: Number(id) } }
-                });
-                if (existing) {
-                    return res.status(400).json({ error: 'Username already exists' });
-                }
-                updateData.username = username;
+                const existing = await prisma.user.findFirst({ where: { username, NOT: { id: Number(id) } } });
+                if (existing) return res.status(400).json({ error: 'Username already exists' });
             }
 
             const updated = await prisma.user.update({
                 where: { id: Number(id) },
-                data: updateData,
-                select: {
-                    id: true,
-                    username: true,
-                    fullName: true,
-                    role: true,
-                    classId: true,
-                    email: true,
-                    status: true
-                }
+                data: {
+                    ...(fullName !== undefined && { fullName }),
+                    ...(role !== undefined && { role }),
+                    ...(classId !== undefined && { classId: classId ? Number(classId) : null }),
+                    ...(email !== undefined && { email }),
+                    ...(status !== undefined && { status }),
+                    ...(username !== undefined && { username }),
+                    ...(passwordHash !== undefined && { passwordHash }),
+                },
+                select: { id: true, username: true, fullName: true, role: true, classId: true, email: true, status: true }
+            });
+
+            await createAuditLog({
+                type: '使用者修改',
+                description: `修改使用者「${updated.fullName}」(${updated.username})`,
+                userId: operatorId,
+                metadata: { userId: updated.id, passwordChanged: !!password }
             });
 
             res.json(updated);
@@ -170,13 +137,22 @@ export const UserController = {
     },
 
     // Delete user (soft delete)
-    async deleteUser(req: Request, res: Response) {
+    async deleteUser(req: AuthRequest, res: Response) {
         try {
             const { id } = req.params;
+            const operatorId = req.user?.id ?? null;
 
             const updated = await prisma.user.update({
                 where: { id: Number(id) },
-                data: { status: 'inactive' }
+                data: { status: 'inactive' },
+                select: { id: true, fullName: true, username: true }
+            });
+
+            await createAuditLog({
+                type: '使用者停用',
+                description: `停用使用者「${updated.fullName}」(${updated.username})`,
+                userId: operatorId,
+                metadata: { userId: updated.id }
             });
 
             res.json({ success: true, message: 'User deactivated' });
@@ -186,53 +162,28 @@ export const UserController = {
         }
     },
 
-    // Login with JWT token generation
+    // Login — public endpoint, no AuthRequest needed
     async login(req: Request, res: Response) {
         try {
             const { username, password } = req.body;
 
-            const user = await prisma.user.findUnique({
-                where: { username },
-                include: { class: true }
-            });
+            const user = await prisma.user.findUnique({ where: { username }, include: { class: true } });
+            if (!user) return res.status(401).json({ error: 'Invalid credentials' });
 
-            if (!user) {
-                return res.status(401).json({ error: 'Invalid credentials' });
-            }
-
-            // Compare password with stored hash using bcrypt
             const isMatch = await bcrypt.compare(password, user.passwordHash);
-            if (!isMatch) {
-                return res.status(401).json({ error: 'Invalid credentials' });
-            }
+            if (!isMatch) return res.status(401).json({ error: 'Invalid credentials' });
 
-            if (user.status !== 'active') {
-                return res.status(403).json({ error: 'Account is inactive' });
-            }
+            if (user.status !== 'active') return res.status(403).json({ error: 'Account is inactive' });
 
-            // Generate JWT token
             const token = jwt.sign(
-                {
-                    id: user.id,
-                    username: user.username,
-                    role: user.role,
-                    classId: user.classId
-                },
+                { id: user.id, username: user.username, role: user.role, classId: user.classId },
                 process.env.JWT_SECRET as string,
                 { expiresIn: (process.env.JWT_EXPIRES_IN || '7d') as jwt.SignOptions['expiresIn'] }
             );
 
-            // Return token along with user data
             res.json({
                 token,
-                user: {
-                    id: user.id,
-                    username: user.username,
-                    fullName: user.fullName,
-                    role: user.role,
-                    classId: user.classId,
-                    class: user.class
-                }
+                user: { id: user.id, username: user.username, fullName: user.fullName, role: user.role, classId: user.classId, class: user.class }
             });
         } catch (error) {
             console.error(error);

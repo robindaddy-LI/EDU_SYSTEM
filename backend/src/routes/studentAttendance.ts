@@ -1,5 +1,6 @@
 import express from 'express';
 import { StudentAttendanceController } from '../controllers/StudentAttendanceController';
+import { verifyToken } from '../middleware/auth';
 
 const router = express.Router();
 
@@ -10,12 +11,12 @@ router.get('/', StudentAttendanceController.getAll);
 router.get('/:id', StudentAttendanceController.getById);
 
 // Create or update student attendance record
-router.post('/', StudentAttendanceController.upsert);
+router.post('/', verifyToken, StudentAttendanceController.upsert);
 
 // Batch upsert student attendance records
-router.post('/batch', StudentAttendanceController.batchUpsert);
+router.post('/batch', verifyToken, StudentAttendanceController.batchUpsert);
 
 // Delete student attendance record
-router.delete('/:id', StudentAttendanceController.delete);
+router.delete('/:id', verifyToken, StudentAttendanceController.delete);
 
 export default router;

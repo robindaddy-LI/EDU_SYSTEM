@@ -60,15 +60,15 @@ export interface Teacher {
 export interface EnrollmentHistory {
     id: number;
     enrollmentDate: string; // ISO date string
-    className: string;
+    classTitle: string;     // 班級名稱（JSON 欄位，非 DB relation）
     schoolName?: string;
     studentId: number;
 }
 
 // Manual historical attendance data (stored as JSON in DB)
 export interface HistoricalAttendance {
-    rowLabel: string; // e.g. "第一年"
-    className: string; // e.g. "幼兒班"
+    rowLabel: string;   // e.g. "第一年"
+    classTitle: string; // e.g. "幼兒班"（JSON 欄位，非 DB relation）
     percentage: number;
 }
 

@@ -9,7 +9,7 @@ export const StudentController = {
         try {
             const { classId, status, search } = req.query;
 
-            const where: any = {};
+            const where: Record<string, unknown> = {};
             if (classId) where.classId = Number(classId);
             if (status) where.status = status as string;
             if (search) {
@@ -56,13 +56,14 @@ export const StudentController = {
     },
 
     // Create a new student
-    async createStudent(req: Request, res: Response) {
+    async createStudent(req: AuthRequest, res: Response) {
         try {
             const {
                 fullName, studentType, classId, status,
                 dob, address, contactName, contactPhone,
                 isBaptized, baptismDate, isSpiritBaptized, spiritBaptismDate, notes
             } = req.body;
+            const operatorId = req.user?.id ?? null;
 
             const newStudent = await prisma.student.create({
                 data: {
@@ -80,6 +81,13 @@ export const StudentController = {
                     spiritBaptismDate: spiritBaptismDate ? new Date(spiritBaptismDate) : null,
                     notes
                 }
+            });
+
+            await createAuditLog({
+                type: '學生新增',
+                description: `新增學生「${newStudent.fullName}」(ID: ${newStudent.id})`,
+                userId: operatorId,
+                metadata: { studentId: newStudent.id, fullName: newStudent.fullName, classId: newStudent.classId }
             });
 
             res.status(201).json(newStudent);
@@ -245,7 +253,7 @@ export const StudentController = {
                 }
 
                 const targetId = Number(keepId);
-                const sourceIds = mergeIds.map((id: any) => Number(id));
+                const sourceIds = (mergeIds as (number | string)[]).map(id => Number(id));
 
                 await prisma.$transaction(async (tx) => {
                     // 1. Merge Enrollment History & Historical Attendance (JSON fields)
@@ -254,15 +262,15 @@ export const StudentController = {
 
                     if (!targetStudent) throw new Error('Target student not found');
 
-                    let mergedEnrollment = (targetStudent.enrollmentHistory as any[]) || [];
-                    let mergedHistorical = (targetStudent.historicalAttendance as any[]) || [];
+                    let mergedEnrollment = (targetStudent.enrollmentHistory as unknown[]) || [];
+                    let mergedHistorical = (targetStudent.historicalAttendance as unknown[]) || [];
 
                     for (const source of sourceStudents) {
                         if (source.enrollmentHistory && Array.isArray(source.enrollmentHistory)) {
-                            mergedEnrollment = [...mergedEnrollment, ...(source.enrollmentHistory as any[])];
+                            mergedEnrollment = [...mergedEnrollment, ...(source.enrollmentHistory as unknown[])];
                         }
                         if (source.historicalAttendance && Array.isArray(source.historicalAttendance)) {
-                            mergedHistorical = [...mergedHistorical, ...(source.historicalAttendance as any[])];
+                            mergedHistorical = [...mergedHistorical, ...(source.historicalAttendance as unknown[])];
                         }
                     }
 
@@ -321,7 +329,7 @@ export const StudentController = {
                     return res.status(400).json({ error: 'Invalid delete parameters' });
                 }
 
-                const idsToDelete = deleteIds.map((id: any) => Number(id));
+                const idsToDelete = (deleteIds as (number | string)[]).map(id => Number(id));
 
                 await prisma.$transaction(async (tx) => {
                     await tx.studentAttendance.deleteMany({
@@ -374,18 +382,20 @@ export const StudentController = {
 
                     if (existing) {
                         // MERGE LOGIC
-                        let mergedEnrollment = (existing.enrollmentHistory as any[]) || [];
-                        let mergedHistorical = (existing.historicalAttendance as any[]) || [];
+                        let mergedEnrollment = (existing.enrollmentHistory as unknown[]) || [];
+                        let mergedHistorical = (existing.historicalAttendance as unknown[]) || [];
 
-                        const enrollmentExists = (e: any) => mergedEnrollment.some((m: any) =>
-                            m.enrollmentDate === e.enrollmentDate && m.className === e.className
+                        type EnrollItem = { enrollmentDate: string; classTitle: string };
+                        type HistItem = { rowLabel: string; classTitle: string };
+                        const enrollmentExists = (e: EnrollItem) => (mergedEnrollment as EnrollItem[]).some(m =>
+                            m.enrollmentDate === e.enrollmentDate && m.classTitle === e.classTitle
                         );
-                        const historyExists = (h: any) => mergedHistorical.some((m: any) =>
-                            m.rowLabel === h.rowLabel && m.className === h.className
+                        const historyExists = (h: HistItem) => (mergedHistorical as HistItem[]).some(m =>
+                            m.rowLabel === h.rowLabel && m.classTitle === h.classTitle
                         );
 
                         if (s.enrollmentHistory && Array.isArray(s.enrollmentHistory)) {
-                            s.enrollmentHistory.forEach((newItem: any) => {
+                            (s.enrollmentHistory as EnrollItem[]).forEach(newItem => {
                                 if (!enrollmentExists(newItem)) {
                                     mergedEnrollment.push(newItem);
                                 }
@@ -393,7 +403,7 @@ export const StudentController = {
                         }
 
                         if (s.historicalAttendance && Array.isArray(s.historicalAttendance)) {
-                            s.historicalAttendance.forEach((newItem: any) => {
+                            (s.historicalAttendance as HistItem[]).forEach(newItem => {
                                 if (!historyExists(newItem)) {
                                     mergedHistorical.push(newItem);
                                 }

@@ -1,15 +1,16 @@
-
-import { Request, Response } from 'express';
+import { Response } from 'express';
 import { AttendanceStatus } from '@prisma/client';
 import prisma from '../prisma';
+import { AuthRequest } from '../middleware/auth';
+import { createAuditLog } from '../utils/auditLog';
 
 export const ClassSessionController = {
     // Get all sessions (with optional filtering)
-    async getAllSessions(req: Request, res: Response) {
+    async getAllSessions(req: AuthRequest, res: Response) {
         try {
             const { classId, startDate, endDate } = req.query;
 
-            const where: any = {};
+            const where: Record<string, unknown> = {};
             if (classId) where.classId = Number(classId);
             if (startDate && endDate) {
                 where.date = {
@@ -21,9 +22,7 @@ export const ClassSessionController = {
             const sessions = await prisma.classSession.findMany({
                 where,
                 orderBy: { date: 'desc' },
-                include: {
-                    class: true,
-                }
+                include: { class: true }
             });
             res.json(sessions);
         } catch (error) {
@@ -32,20 +31,16 @@ export const ClassSessionController = {
         }
     },
 
-    // Get single session with updated details
-    async getSessionById(req: Request, res: Response) {
+    // Get single session with attendance details
+    async getSessionById(req: AuthRequest, res: Response) {
         try {
             const { id } = req.params;
             const session = await prisma.classSession.findUnique({
                 where: { id: Number(id) },
                 include: {
                     class: true,
-                    studentAttendance: {
-                        include: { student: true }
-                    },
-                    teacherAttendance: {
-                        include: { teacher: true }
-                    }
+                    studentAttendance: { include: { student: true } },
+                    teacherAttendance: { include: { teacher: true } }
                 }
             });
 
@@ -53,39 +48,22 @@ export const ClassSessionController = {
                 return res.status(404).json({ error: 'Session not found' });
             }
 
-            // Calculate academic year for this session
             const sessionDate = new Date(session.date);
             const academicYear = sessionDate.getMonth() >= 8
                 ? sessionDate.getFullYear()
                 : sessionDate.getFullYear() - 1;
 
-            // 1. Fetch all active students currently in this class
-            // Note: Ideally we should check if they were in the class at session.date, 
-            // but for now we use current status or if they have an attendance record.
             const allStudents = await prisma.student.findMany({
-                where: {
-                    classId: session.classId,
-                    status: 'active'
-                }
+                where: { classId: session.classId, status: 'active' }
             });
 
-            // 2. Fetch all teachers assigned to this class for the session's academic year
             const assignedTeachers = await prisma.teacherClassAssignment.findMany({
-                where: {
-                    classId: session.classId,
-                    academicYear: String(academicYear)
-                },
+                where: { classId: session.classId, academicYear: String(academicYear) },
                 include: { teacher: true }
             });
 
-            // 3. Merge Student Attendance
-            // Map existing records by studentId
             const studentAttendanceMap = new Map(session.studentAttendance.map(r => [r.studentId, r]));
-
-            // Create a comprehensive list: All active students + anyone else who has a record (even if inactive/transferred)
             const studentList = [...allStudents];
-
-            // Add students who have records but aren't in the active list (e.g. inactive now but attended then)
             session.studentAttendance.forEach(r => {
                 if (!studentList.find(s => s.id === r.studentId)) {
                     studentList.push(r.student);
@@ -95,29 +73,19 @@ export const ClassSessionController = {
             const mergedStudentAttendance = studentList.map(student => {
                 const record = studentAttendanceMap.get(student.id);
                 return {
-                    id: record ? record.id : 0, // 0 indicates no DB record yet
-                    student: student,
-                    status: record ? record.status : AttendanceStatus.present, // Default to present if no record
+                    id: record ? record.id : 0,
+                    student,
+                    status: record ? record.status : AttendanceStatus.present,
                     reason: record ? record.reason : undefined
                 };
             });
 
-            // 4. Merge Teacher Attendance
             const teacherAttendanceMap = new Map(session.teacherAttendance.map(r => [r.teacherId, r]));
-
-            // Get list of assigned teachers (filter out inactive if needed, though assignment usually implies active)
             let teacherList = assignedTeachers.map(a => a.teacher).filter(t => t.status === 'active');
 
-            // FALLBACK: If teacherList is empty (e.g. assignments missing for this academic year),
-            // fetch ALL active teachers so the UI isn't empty.
             if (teacherList.length === 0) {
-                const allActiveTeachers = await prisma.teacher.findMany({
-                    where: { status: 'active' }
-                });
-                teacherList = allActiveTeachers;
+                teacherList = await prisma.teacher.findMany({ where: { status: 'active' } });
             }
-
-            // Add teachers with existing records who might not be assigned anymore
             session.teacherAttendance.forEach(r => {
                 if (!teacherList.find(t => t.id === r.teacherId)) {
                     teacherList.push(r.teacher);
@@ -128,14 +96,13 @@ export const ClassSessionController = {
                 const record = teacherAttendanceMap.get(teacher.id);
                 return {
                     id: record ? record.id : 0,
-                    teacher: teacher,
+                    teacher,
                     status: record ? record.status : AttendanceStatus.present,
                     reason: record ? record.reason : undefined
                 };
             });
 
-            // Format response
-            const response = {
+            res.json({
                 session: {
                     id: session.id,
                     classId: session.classId,
@@ -153,9 +120,7 @@ export const ClassSessionController = {
                 },
                 attendingTeachers: mergedTeacherAttendance,
                 studentAttendance: mergedStudentAttendance
-            };
-
-            res.json(response);
+            });
         } catch (error) {
             console.error(error);
             res.status(500).json({ error: 'Failed to fetch session details' });
@@ -163,9 +128,10 @@ export const ClassSessionController = {
     },
 
     // Create a new session
-    async createSession(req: Request, res: Response) {
+    async createSession(req: AuthRequest, res: Response) {
         try {
             const { classId, date, sessionType } = req.body;
+            const operatorId = req.user?.id ?? null;
 
             const newSession = await prisma.classSession.create({
                 data: {
@@ -177,45 +143,43 @@ export const ClassSessionController = {
                 }
             });
 
-            // Automatically initialize attendance records for all active students in this class
             const students = await prisma.student.findMany({
                 where: { classId: Number(classId), status: 'active' }
             });
 
-            const studentAttendanceData = students.map((s: any) => ({
-                sessionId: newSession.id,
-                studentId: s.id,
-                status: AttendanceStatus.present // Default to present? Or leave for user to set?
-            }));
-
-            if (studentAttendanceData.length > 0) {
+            if (students.length > 0) {
                 await prisma.studentAttendance.createMany({
-                    data: studentAttendanceData
+                    data: students.map(s => ({
+                        sessionId: newSession.id,
+                        studentId: s.id,
+                        status: AttendanceStatus.present
+                    }))
                 });
             }
 
-            // Initialize for teachers assigned to this class for the current year
-            // (Simplified logic: taking all 'active' teachers associated with this class)
-            // For accurate year mapping, we'd need to check the academic year of the session date.
-            // Ignoring year check for MVP or assuming a current 'active' assignment view.
             const assignedTeachers = await prisma.teacherClassAssignment.findMany({
                 where: { classId: Number(classId) },
                 include: { teacher: true }
             });
 
-            const teacherAttendanceData = assignedTeachers
-                .filter((a: any) => a.teacher.status === 'active')
-                .map((a: any) => ({
+            const activeTeacherData = assignedTeachers
+                .filter(a => a.teacher.status === 'active')
+                .map(a => ({
                     sessionId: newSession.id,
                     teacherId: a.teacherId,
                     status: AttendanceStatus.present
                 }));
 
-            if (teacherAttendanceData.length > 0) {
-                await prisma.teacherAttendance.createMany({
-                    data: teacherAttendanceData
-                });
+            if (activeTeacherData.length > 0) {
+                await prisma.teacherAttendance.createMany({ data: activeTeacherData });
             }
+
+            await createAuditLog({
+                type: '課堂新增',
+                description: `新增課堂（班級 #${classId}，日期 ${date}）`,
+                userId: operatorId,
+                metadata: { sessionId: newSession.id, classId: Number(classId), date, sessionType }
+            });
 
             res.status(201).json(newSession);
         } catch (error) {
@@ -225,9 +189,10 @@ export const ClassSessionController = {
     },
 
     // Update session details
-    async updateSession(req: Request, res: Response) {
+    async updateSession(req: AuthRequest, res: Response) {
         try {
             const { id } = req.params;
+            const operatorId = req.user?.id ?? null;
             const {
                 worshipTopic, worshipTeacherName, activityTopic, activityTeacherName,
                 auditorCount, offeringAmount, notes, isCancelled, cancellationReason
@@ -248,6 +213,13 @@ export const ClassSessionController = {
                 }
             });
 
+            await createAuditLog({
+                type: '課堂修改',
+                description: `修改課堂 #${id} 資料`,
+                userId: operatorId,
+                metadata: { sessionId: Number(id) }
+            });
+
             res.json(updated);
         } catch (error) {
             console.error(error);
@@ -256,73 +228,55 @@ export const ClassSessionController = {
     },
 
     // Batch update attendance
-    async updateAttendance(req: Request, res: Response) {
+    async updateAttendance(req: AuthRequest, res: Response) {
         try {
             const { id } = req.params;
             const sessionId = Number(id);
             const { students, teachers } = req.body;
-            // Expected format: 
-            // students: [{ studentId: 1, status: 'present', reason: '' }, ...]
-            // teachers: [{ teacherId: 1, status: 'present', reason: '' }, ...]
+            const operatorId = req.user?.id ?? null;
+
+            interface AttendanceInput { studentId?: number; teacherId?: number; status: AttendanceStatus; reason?: string; }
 
             const transactionOps = [];
 
-            // Update Students
             if (students && Array.isArray(students)) {
-                for (const s of students) {
-                    // Upsert logic: update if exists, insert if not (e.g. new student joined class late)
+                for (const s of students as AttendanceInput[]) {
                     transactionOps.push(
                         prisma.studentAttendance.upsert({
-                            where: {
-                                sessionId_studentId: {
-                                    sessionId,
-                                    studentId: s.studentId
-                                }
-                            },
-                            update: {
-                                status: s.status,
-                                reason: s.reason
-                            },
-                            create: {
-                                sessionId,
-                                studentId: s.studentId,
-                                status: s.status,
-                                reason: s.reason
-                            }
+                            where: { sessionId_studentId: { sessionId, studentId: s.studentId! } },
+                            update: { status: s.status, reason: s.reason },
+                            create: { sessionId, studentId: s.studentId!, status: s.status, reason: s.reason }
                         })
                     );
                 }
             }
 
-            // Update Teachers
             if (teachers && Array.isArray(teachers)) {
-                for (const t of teachers) {
+                for (const t of teachers as AttendanceInput[]) {
                     transactionOps.push(
                         prisma.teacherAttendance.upsert({
-                            where: {
-                                sessionId_teacherId: {
-                                    sessionId,
-                                    teacherId: t.teacherId
-                                }
-                            },
-                            update: {
-                                status: t.status,
-                                reason: t.reason
-                            },
-                            create: {
-                                sessionId,
-                                teacherId: t.teacherId,
-                                status: t.status,
-                                reason: t.reason
-                            }
+                            where: { sessionId_teacherId: { sessionId, teacherId: t.teacherId! } },
+                            update: { status: t.status, reason: t.reason },
+                            create: { sessionId, teacherId: t.teacherId!, status: t.status, reason: t.reason }
                         })
                     );
                 }
             }
 
             await prisma.$transaction(transactionOps);
-            res.json({ success: true });
 
+            await createAuditLog({
+                type: '出席記錄更新',
+                description: `更新課堂 #${sessionId} 出席記錄`,
+                userId: operatorId,
+                metadata: {
+                    sessionId,
+                    studentCount: students?.length ?? 0,
+                    teacherCount: teachers?.length ?? 0
+                }
+            });
+
+            res.json({ success: true });
         } catch (error) {
             console.error(error);
             res.status(500).json({ error: 'Failed to update attendance' });
